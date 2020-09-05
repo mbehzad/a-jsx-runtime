@@ -1,0 +1,18 @@
+{
+  "compileOnSave": false,
+  "compilerOptions": {
+    "strict": true,
+    "target": "es2017",
+    "module": "esnext",
+    "moduleResolution": "node",
+    "jsx": "preserve",
+    "experimentalDecorators": true,
+    "allowSyntheticDefaultImports": true,
+    "noUnusedLocals": true,
+    "sourceMap": true,
+    "allowJs": false,
+    "resolveJsonModule": true,
+    "baseUrl": "./"
+  }
+
+}
