@@ -1,12 +1,16 @@
 import { render, rawHtml } from "./jsx/jsx-runtime";
 
-
 const xss = "<img src=x onerror=\"alert('XSS Attack')\">"; //"<script>alert('-.-')</script>";
 
-function RTE(props/*{ txt, "on-click": onClick }*/: { txt: string; ref?: Function }) {
-  console.log("onClick", props["on-click"])
+function RTE(props: /*{ txt, "on-click": onClick }*/ {
+  txt: string;
+  ref?: Function;
+}) {
+  console.log("onClick", props["on-click"]);
   return (
-    <p ref={(el: HTMLElement) => console.log("my div ::ref::3.2", el)}>{props.txt}</p>
+    <p ref={(el: HTMLElement) => console.log("my div ::ref::3.2", el)}>
+      {props.txt}
+    </p>
   );
 }
 
@@ -38,6 +42,7 @@ function reflog(el: HTMLElement) {
   console.log("my inner div::ref::8", el);
 }
 
+/*
 const markup = (
   <>
     <div
@@ -83,6 +88,8 @@ const markup = (
   </>
 );
 
+*/
+
 /*
 const markup = (
   <Button disabled={true}>
@@ -110,6 +117,91 @@ const markup = (
 );
 */
 
+function Span({ mode }: { mode: any }) {
+  return mode === 1 ? (
+    <div>
+      <span id="inner" old={true}>
+        Span-Comp--old
+      </span>
+      <h3>to be removed</h3>
+    </div>
+  ) : (
+    <div>
+      <p id="inner" new={true}>
+        Span-Comp--news
+      </p>
+    </div>
+  );
+}
+
+function Comp({num}) {
+  if (num === 1) return null;
+  return <div><p>comp</p></div>
+}
+
+const markup1 = (num: any) => (
+  <div id="outer" data-foo="bar" data-var={num}>
+    <h3>should get 2 -: 3</h3>
+    {num === 1 ? (
+      <ul class="ul-class">
+        <li>Text 1 </li>
+        <li>Text 2 </li>
+      </ul>
+    ) : (
+      <ul class="ul-class">
+        <li>Text 3 </li>
+        <li>Text 2 </li>
+        <li>Text 1 </li>
+      </ul>
+    )}
+    <h3>should get 3 -: 2</h3>
+    {num === 1 ? (
+      <ul class="ul-class">
+        <li>Text 1 </li>
+        <li>Text 2 </li>
+        <li>Text 3 </li>
+      </ul>
+    ) : (
+      <ul class="ul-class">
+        <li>Text 1 </li>
+        <li>Text 2 </li>
+      </ul>
+    )}
+    {num === 1 ? null : <p>new render</p>}
+    <div>
+      <span>span-content</span>
+    </div>
+    <Span mode={num} />
+    {/*document.querySelector("#old")*/}
+    <>Fragment-item</>
+    <svg
+      viewBox="0 0 300 100"
+      xmlns="http://www.w3.org/2000/svg"
+      stroke="red"
+      fill="grey"
+    >
+      <circle cx="50" cy="50" r="40" />
+      <circle cx="150" cy="50" r="4" />
+
+      <svg viewBox="0 0 10 10" x="200" width="100">
+        <circle cx="5" cy="5" r="4" />
+      </svg>
+    </svg>
+  </div>
+);
+
+function markup(num: any) {
+  return (
+    <div id="outer">
+      <h1>static</h1>
+      <h1>dynamic val: {num}</h1>
+      {num === 1 ? <h1>old</h1> : false}
+      {num === 1 ? <><h1>frag old</h1><span>f sp old</span></> : <><h1>frag new</h1></>}
+      <Comp num={num} />
+    </div>
+  );
+}
+
 //console.log(markup);
 //window.markup = markup;
 
@@ -133,5 +225,13 @@ customElements.define("popup-info", PopUpInfo);
 document.querySelector("#old")!.addEventListener("click", console.log);
 
 //document.body.innerHTML = markup;
-render(markup, document.body, true);
+render(markup(1), document.body);
+document.getElementById("outer")?.setAttribute("data-foo", "mod");
+
+//document.getElementById("inner")?.setAttribute("data-foo", "mod");
+//render(markup(2), document.body);
 //render(markup, document.body, true);
+
+
+window.reRender1 = () => render(markup(1), document.body);
+window.reRender2 = () => render(markup(2), document.body);

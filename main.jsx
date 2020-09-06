@@ -1,8 +1,11 @@
 import { render, rawHtml } from "./jsx/jsx-runtime";
+
 const xss = '<img src=x onerror="alert(\'XSS Attack\')">'; //"<script>alert('-.-')</script>";
+
 function RTE({ txt }) {
     return <p ref={(el) => console.log("my div ::ref::3.2", el)}>{txt}</p>;
 }
+
 function Button({ children, disabled }) {
     return (<button disabled={disabled} ref={(el) => console.log("my button ::ref::1", el)}>
       <span ref={(el) => console.log("my a ::ref::2", el)}>a</span>
