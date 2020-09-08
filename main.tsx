@@ -134,9 +134,13 @@ function Span({ mode }: { mode: any }) {
   );
 }
 
-function Comp({num}) {
+function Comp({ num }) {
   if (num === 1) return null;
-  return <div><p>comp</p></div>
+  return (
+    <div>
+      <p>comp</p>
+    </div>
+  );
 }
 
 const markup1 = (num: any) => (
@@ -190,15 +194,71 @@ const markup1 = (num: any) => (
   </div>
 );
 
-function markup(num: any) {
+function markup2(num: any) {
   return (
     <div id="outer">
+      <>
+        <>
+          <p>nested fragment</p>
+        </>
+      </>
       <h1>static</h1>
       <h1>dynamic val: {num}</h1>
       {num === 1 ? <h1>old</h1> : false}
-      {num === 1 ? <><h1>frag old</h1><span>f sp old</span></> : <><h1>frag new</h1></>}
+      {num === 1 ? (
+        <>
+          <h1>frag old</h1>
+          <span>frag span old</span>
+        </>
+      ) : (
+        <h1>frag new</h1>
+      )}
       <Comp num={num} />
     </div>
+  );
+}
+
+function markup(num: any) {
+  return num === 1 ? (
+    <h1>
+      old-Headline {num}
+      foo
+      <>
+        <p>old-span A</p>
+        <p>1</p>
+        <p>2</p>
+        <p>3</p>
+        <svg viewBox="0 0 300 100" xmlns="http://www.w3.org/2000/svg" stroke="red" fill="grey">
+          <circle cx="50" cy="50" r="40" />
+          <circle cx="150" cy="50" r="4" />
+
+          <svg viewBox="0 0 10 10" x="200" width="100">
+            <circle cx="5" cy="5" r="4" />
+          </svg>
+        </svg>
+      </>
+      {null}
+    </h1>
+  ) : (
+    <h1 class="a">
+      new-Headline {num}
+      {false}
+      <>
+        <p>new-span A</p>
+        <p>1</p>
+        {undefined}
+        <p>3</p>
+        <svg viewBox="0 0 300 100" xmlns="http://www.w3.org/2000/svg" stroke="red" fill="grey">
+          <circle cx="50" cy="50" r="40" />
+          <circle cx="150" cy="50" r="4" />
+
+          <svg viewBox="0 0 10 10" x="200" width="100">
+            <circle cx="5" cy="5" r="6" />
+          </svg>
+        </svg>
+        <p>new span B at end</p>
+      </>
+    </h1>
   );
 }
 
@@ -222,16 +282,15 @@ class PopUpInfo extends HTMLElement {
 
 customElements.define("popup-info", PopUpInfo);
 
-document.querySelector("#old")!.addEventListener("click", console.log);
+//document.querySelector("#old")!.addEventListener("click", console.log);
 
 //document.body.innerHTML = markup;
 render(markup(1), document.body);
-document.getElementById("outer")?.setAttribute("data-foo", "mod");
+//document.getElementById("outer")?.setAttribute("data-foo", "mod");
 
 //document.getElementById("inner")?.setAttribute("data-foo", "mod");
 //render(markup(2), document.body);
 //render(markup, document.body, true);
-
 
 window.reRender1 = () => render(markup(1), document.body);
 window.reRender2 = () => render(markup(2), document.body);

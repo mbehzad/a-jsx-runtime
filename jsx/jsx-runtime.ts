@@ -1,4 +1,4 @@
-const renderedVTrees = new WeakMap<HTMLElement, VNode>();
+const renderedVTrees = new WeakMap<HTMLElement, RootVNode>();
 /**
  * provides functions needed by babel for a custom pragma
  * to render parsed jsx code to html
@@ -42,8 +42,131 @@ class JsxNode {
   }
 }
 
-interface VNode {
-  [key: string]: any;
+/*{
+      //[key: string]: any;
+      type: "Element" | "Fragment" | "TextNode" | "Null";
+      asNode(): Node;
+      toString(): string;
+      node: Node | null;
+      parent: VNode | null;
+      children: Array<VNode>;
+      tag: string | Function; // ?
+      //getParentElementNode(): VNode; // ancestor which has a Element node (i.e. no Fragment)
+      //getChildElementNodes(): VNode[]; // children and if a child is a fragment its children
+    }*/
+
+type CommonVNodeProperties = {
+  parent: VNode;
+  asNode(): Node;
+  toString(): string;
+};
+type ElementVNode = CommonVNodeProperties & {
+  type: "Element";
+  node: Element;
+  children: Array<VNode>;
+  tag: string | Function;
+  props: { [key: string]: any };
+};
+type TextVNode = CommonVNodeProperties & {
+  type: "TextNode";
+  node: Text;
+  children: Array<VNode>; //Array<never>;
+  tag: null;
+};
+
+type RootVNode = {
+  type: "Root";
+  node: Element;
+  children: Array<VNode>;
+  parent: null;
+  //asNode(): Node;
+  //toString(): string;
+};
+
+type VNode = {
+  parent: VNode;
+  asNode(): Node;
+  toString(): string;
+} & (
+  | ElementVNode
+  | TextVNode
+  | {
+      type: "TextNode";
+      node: Text;
+      children: Array<VNode>; //Array<never>;
+      tag: null;
+    }
+  | {
+      type: "Fragment";
+      node: null; // @TODO: or null?
+      children: Array<VNode>;
+      tag: null;
+    }
+  | {
+      type: "Null";
+      node: null;
+      children: Array<VNode>; //Array<never>;
+      tag: null;
+    }
+);
+
+// null when checking the parent when root is fragment itself
+function getParentElementNode(vNode: VNode): ElementVNode {
+  while (vNode.parent) {
+    vNode = vNode.parent;
+    if (vNode.type === "Element") return vNode;
+  }
+
+  // will never reach
+  throw new Error("jsx-runtime: can't find a parent with Element");
+}
+
+function getChildElementNodes(
+  vNode: VNode,
+  alwaysAllow: VNode[] = []
+): VNode[] {
+  return vNode.children
+    .map((childNode: VNode) => {
+      if (alwaysAllow.includes(childNode)) return childNode;
+      if (childNode.type === "Null") return null;
+      if (childNode.type === "Element" || childNode.type === "TextNode")
+        return childNode;
+      if (childNode.type === "Fragment") return getChildElementNodes(childNode);
+      // @TODO: other types (i.e. Live Element)
+      return null;
+    })
+    .flat(Infinity)
+    .filter(Boolean) as VNode[];
+}
+
+function getSiblings(vNode: VNode) {
+  return getChildElementNodes(getParentElementNode(vNode), [vNode]);
+}
+
+function getParentAndNextSibling(vNode: VNode): [Node, Node | null] {
+  // node ancestor with Element,
+  const parentWithElement = getParentElementNode(vNode);
+  const siblings = getChildElementNodes(parentWithElement, [vNode]);
+  const prevSibling = siblings[siblings.indexOf(vNode) - 1];
+  const nextSiblingNode = prevSibling ? prevSibling.node!.nextSibling : null;
+  //const nextSiblingNode = nextSibling ? nextSibling.node : null;
+
+  console.log("getParentAndNextSibling:", {
+    vNode,
+    parentWithElement,
+    siblings,
+    nextSiblingNode,
+    index: siblings.indexOf(vNode),
+  });
+
+  return [parentWithElement.node, nextSiblingNode];
+  // all flat child nodes +
+}
+
+function findPrevSibling(vNode: VNode): VNode | null {
+  const siblings = getSiblings(vNode);
+  let siblingBefore = siblings[siblings.indexOf(vNode) - 1] || null;
+  return siblingBefore;
 }
 
 // private key for calling the `ref` callers
@@ -160,11 +283,32 @@ function asHtmlString(tag: string | Function, props: JsxProps) {
  * @param props {Object} - props argument of jsx call
  */
 function asNode(
-  tag: string | Function,
+  tag: string | Function | undefined,
   props: JsxProps,
   children: any[]
 ): [Node, JsxNodeInterface[]] {
   console.log("asNode()", { tag, props, children });
+
+  // fragment
+  if (!tag) {
+    const fragments = children
+      .flat()
+      .filter((n) => n.tag !== "__NULL__")
+      //.filter(truthy)
+      .map(
+        (item) => item.asNode()
+        /*item instanceof Node
+            ? item
+            : item instanceof JsxNode
+            ? item.asNode()
+            : item*/
+      );
+
+    const documentFragment = document.createDocumentFragment();
+
+    documentFragment.append(...fragments);
+    return [documentFragment, []];
+  }
 
   // shouldn't
   if (typeof tag === "function") {
@@ -279,15 +423,119 @@ function asNode(
   return [node, childJsxNodes as JsxNodeInterface[]];
 }
 
-function asVNode(tag: string | Function, props: JsxProps): VNode {
+// @TODO: remove method on VNode
+function removeItem(item: VNode) {
+  //if (item === null) return;
+  if (item.type === "Element" || item.type === "TextNode")
+    item.node.parentElement!.removeChild(item.node);
+  else if (item.type === "Fragment")
+    getChildElementNodes(item).forEach((node) =>
+      node.node!.parentElement!.removeChild(node.node!)
+    );
+  // @TODO: else -> VNode method actually
+}
+
+function insertNewItem(newNode: VNode) {
+  if (newNode.type !== "Null") {
+    const [parent, nextSibling] = getParentAndNextSibling(newNode);
+    parent.insertBefore(newNode.asNode(), nextSibling);
+  }
+}
+
+function diffAndPatch(oldNode: VNode | RootVNode, newNode: VNode | RootVNode) {
+  console.log("-------- diffAndPatch --------", { oldNode, newNode });
+  if (oldNode.type !== newNode.type) {
+    // technically it would been more effective ways to replace, e.g. replaceWith() method
+    // but removing and adding would allow a more generic solution to provide independent implementation from different VNode classes
+    removeItem(oldNode as VNode);
+    insertNewItem(newNode as VNode);
+  }
+  // both null :-> do nothing
+  else if (oldNode.type === "Null" && newNode.type === "Null") return;
+  // both Text Nodes :-> update the text
+  else if (oldNode.type === "TextNode" && newNode.type === "TextNode") {
+    if (oldNode.node!.nodeValue !== newNode.props.content) {
+      oldNode.node!.nodeValue = newNode.props.content;
+    }
+    newNode.node = oldNode.node;
+  }
+  // both HTMLElement with same tag
+  else if (oldNode.type === "Element" && newNode.type === "Element") {
+    if (newNode.tag === oldNode.tag) {
+      newNode.node = oldNode.node;
+      //      patch props,
+      // update props form new node
+      Object.entries(newNode.props)
+        .filter(([k, v]) => oldNode.props[k] !== v)
+        .forEach(([key, value]) => {
+          if (value === true) newNode.node.setAttribute(key, "");
+          else if (value === null || value === undefined || value === false)
+            newNode.node.removeAttribute(key);
+          else newNode.node.setAttribute(key, value);
+        });
+
+      // remove old, obsolate attributes
+      Object.entries(oldNode.props)
+        .filter(([k, v]) => !newNode.props.hasOwnProperty(k))
+        .forEach(([key, value]) => {
+          oldNode.node.removeAttribute(key);
+        });
+
+      // children => iter and patch
+      // old children being modified
+      diffAndPatchChildren(oldNode, newNode);
+    }
+    // tag has changed
+    else {
+      oldNode.node.replaceWith(newNode.asNode());
+    }
+  }
+  // Fragments
+  else if (oldNode.type === "Fragment" && newNode.type === "Fragment") {
+    // iterate, diff and patch
+    diffAndPatchChildren(oldNode, newNode);
+  } else if (oldNode.type === "Root") {
+    // iterate, diff and patch
+    diffAndPatchChildren(oldNode, newNode);
+  }
+}
+
+function diffAndPatchChildren(
+  oldNode: VNode | RootVNode,
+  newNode: VNode | RootVNode
+) {
+  oldNode.children.forEach((oldChild, ix) => {
+    const newChild = newNode.children[ix];
+    if (newChild) diffAndPatch(oldChild, newChild);
+    // child was removed
+    else {
+      removeItem(oldChild);
+    }
+  });
+
+  const documentFragment = document.createDocumentFragment();
+  // new addition items
+  for (let i = oldNode.children.length; i < newNode.children.length; i++) {
+    if (newNode.children[i].type !== "Null")
+      documentFragment.append(newNode.children[i].asNode());
+  }
+  (newNode.node
+    ? newNode.node
+    : getParentElementNode(newNode).node
+  ).insertBefore(documentFragment, null);
+}
+
+function asVNode(tag: string | Function | undefined, props: JsxProps): VNode {
   if (typeof tag === "function") {
     let result = tag(props);
     if (result instanceof JsxNode) {
       return (result as JsxNodeInterface).asVNode();
     }
+    // big @TODO:
     if (result instanceof Node) {
       const node = {
         tag: "__NODE__",
+        type: "?",
         parent: null,
         props: {
           content: result,
@@ -305,10 +553,21 @@ function asVNode(tag: string | Function, props: JsxProps): VNode {
       return node;
     }
 
+    /*function getFirstElement(nnn: VNode) {
+      if (nnn.type === "Element") return nnn.node;
+      if (nnn.type === "Null") return null;
+      if (nnn.type === "Fragment") {
+        const item = nnn.children.find((n2) => getFirstElement(n2) !== null);
+        return item ? item.node : null;
+      }
+    }*/
+
+    // null jsx node
     if (!truthy(result)) {
       const fooNode: VNode = {};
       Object.assign(fooNode, {
         tag: "__NULL__",
+        type: "Null",
         tag2: "tag func returned null node",
         node: null,
         parent: null,
@@ -318,32 +577,31 @@ function asVNode(tag: string | Function, props: JsxProps): VNode {
           return null;
         },
         diffAndPatch(newNode: VNode) {
-          if (newNode.tag === "__NULL__") return;
+          return diffAndPatch(fooNode, newNode);
+
+          if (newNode.type === "Null") return;
           const n = newNode.asNode();
 
           // @TODO: find item before
           //vNode.node
-          const newNodeIndex = newNode.parent.children.indexOf(newNode);
-          const siblings = newNode.parent.children
-            .slice(0, newNodeIndex)
-            .reverse();
-          const siblingBefore = siblings.find((n: VNode) => n.node);
-          if (siblingBefore) {
+          const siblings = getSiblings(newNode);
+          const newNodeIndex = siblings.indexOf(newNode);
 
-            if (n)
-            siblingBefore.node.insertAdjacentElement(
-              "afterend",
-              n
-            );
+          let siblingBefore = siblings[newNodeIndex - 1] || null; // = siblings.find((n: VNode) => n.node);
+          /*for (let ii = newNodeIndex - 1; ii >= 0; ii--) {
+            const el = getFirstElement(siblings[ii]);
+            if (el) {
+              siblingBefore = el;
+              break;
+            }
+          }*/
+          if (siblingBefore) {
+            if (n) siblingBefore.node.insertAdjacentElement("afterend", n);
           } else {
-            (fooNode.parent.node as HTMLElement).insertAdjacentElement(
+            getParentElementNode(newNode).node.insertAdjacentElement(
               "afterbegin",
               n
             );
-            /*(newNode.parent.node as HTMLElement).insertAdjacentElement(
-              "afterbegin",
-              newNode.asNode()
-            );*/
           }
         },
       });
@@ -353,6 +611,7 @@ function asVNode(tag: string | Function, props: JsxProps): VNode {
 
     const node = {
       tag: "__TEXT_NODE__",
+      tpye: "TextNode",
       tag1: 1,
       node: null,
       parent: null,
@@ -371,6 +630,9 @@ function asVNode(tag: string | Function, props: JsxProps): VNode {
           result,
           newNode.props.content
         );
+
+        return diffAndPatch(node, newNode);
+
         // @TODO both text
         if (result !== newNode.props.content)
           node.node.nodeValue = newNode.props.content;
@@ -383,195 +645,335 @@ function asVNode(tag: string | Function, props: JsxProps): VNode {
 
   const { children, ...attr } = props;
   const vNode: VNode = {};
-  Object.assign(vNode, {
-    tag,
-    tag2: "asVNode - normal return",
-    node: null,
-    props: attr,
-    children: children.flat().map((child) => {
-      if (child instanceof JsxNode) {
-        const childVNode = child.asVNode();
-        childVNode.parent = vNode;
-        return childVNode;
-      }
-      if (child instanceof Node) {
+  if (tag) {
+    Object.assign(vNode, {
+      tag,
+      type: "Element", // where comes Fragemnt?
+      tag2: "asVNode - normal return",
+      node: null,
+      props: attr,
+      children: children.flat().map((child) => {
+        if (child instanceof JsxNode) {
+          const childVNode = child.asVNode();
+          childVNode.parent = vNode;
+          return childVNode;
+        }
+        if (child instanceof Node) {
+          const node = {
+            tag: "__NODE__",
+            props: {
+              content: child,
+            },
+            parent: vNode,
+            children: [],
+            asNode() {
+              node.node = child;
+              return child;
+            },
+            diffAndPatch() {
+              console.log("__NODE__ diffAndPatch", child);
+            },
+          };
+
+          return node;
+        }
+
+        console.log("@@ map", { child });
+
+        if (child === null || child === false || child === undefined) {
+          const childVNode: VNode = {
+            tag: "__NULL__",
+            type: "Null",
+            tag2: "children null node",
+            node: null,
+            parent: vNode,
+            props: {},
+            children: [],
+            asNode() {
+              return null;
+            },
+            diffAndPatch(newNode: VNode) {
+              console.log("diff-AndPatch, child node was null", newNode);
+
+              if (newNode.tag === "__NULL__") return;
+              const n = newNode.asNode();
+              // @TODO: find item before
+              //vNode.node
+              const newNodeIndex = newNode.parent.children.indexOf(newNode);
+              const siblings = newNode.parent.children
+                .slice(0, newNodeIndex)
+                .reverse();
+              const siblingBefore = siblings.find((n: VNode) => n.node);
+              console.log({ siblingBefore, siblings, newNodeIndex, newNode });
+
+              if (siblingBefore) {
+                siblingBefore.node.insertAdjacentElement("afterend", n);
+              } else {
+                vNode.node.insertAdjacentElement("afterbegin", n);
+                /*(newNode.parent.node as HTMLElement).insertAdjacentElement(
+                "afterbegin",
+                newNode.asNode()
+              );*/
+              }
+            },
+          };
+
+          return childVNode;
+        }
+
+        console.log(":::", { child });
+
         const node = {
-          tag: "__NODE__",
+          tag: "__TEXT_NODE__",
+          type: "TextNode",
+          tag2: "children Text node",
+          node: null,
+          parent: vNode,
           props: {
             content: child,
           },
-          parent: vNode,
           children: [],
           asNode() {
-            node.node = child;
-            return child;
+            const textNode = document.createTextNode(child);
+            node.node = textNode;
+            console.log(textNode, node);
+
+            return textNode;
           },
-          diffAndPatch() {
-            console.log("__NODE__ diffAndPatch", child);
+          // top level vnode
+          diffAndPatch(newNode: VNode) {
+            // @TODO both text?
+            console.log("change? ", newNode.tag, node.tag);
+
+            if (newNode.tag !== node.tag) {
+              const asNode = newNode.asNode();
+              console.log({ asNode });
+
+              if (asNode) {
+                node.node.replaceWith(asNode);
+              } else {
+                node.node.parentNode.removeChild(node.node);
+              }
+
+              return;
+            }
+            if (child !== newNode.props.content)
+              node.node.nodeValue = newNode.props.content;
+            newNode.node = node.node;
+            // else ?
           },
         };
 
         return node;
-      }
+      }),
 
-      console.log({ child });
+      asNode() {
+        console.log("asVNode.asNode", { tag, props, vNode });
 
-      if (child === null || child === false || child === undefined) {
-        const childVNode: VNode = {
-          tag: "__NULL__",
-          tag2: "children null node",
-          node: null,
-          parent: vNode,
-          props: {},
-          children: [],
-          asNode() {
-            return null;
-          },
-          diffAndPatch(newNode: VNode) {
-            console.log("diff-AndPatch, child node was null", newNode);
+        const node = asNode(tag, attr, vNode.children)[0];
+        vNode.node = node;
+        console.log({ node });
 
-            if (newNode.tag === "__NULL__") return;
-          const n = newNode.asNode();
-            // @TODO: find item before
-            //vNode.node
-            const newNodeIndex = newNode.parent.children.indexOf(newNode);
-            const siblings = newNode.parent.children
-              .slice(0, newNodeIndex)
-              .reverse();
-            const siblingBefore = siblings.find((n: VNode) => n.node);
-            console.log({siblingBefore, siblings, newNodeIndex, newNode});
+        return node;
+      },
+      // to level
+      diffAndPatch(newVNode: VNode) {
+        console.log("diffAndPatch");
 
-            if (siblingBefore) {
-              siblingBefore.node.insertAdjacentElement(
-                "afterend",
-                n
-              );
-            } else {
-              (vNode.node as HTMLElement).insertAdjacentElement(
-                "afterbegin",
-                n
-              );
-              /*(newNode.parent.node as HTMLElement).insertAdjacentElement(
-                "afterbegin",
-                newNode.asNode()
-              );*/
-            }
-          },
-        };
+        return diffAndPatch(vNode, newVNode);
 
-        return childVNode;
-      }
-
-      console.log(":::", { child });
-
-      const node = {
-        tag: "__TEXT_NODE__",
-        tag2: "children Text node",
-        node: null,
-        parent: vNode,
-        props: {
-          content: child,
-        },
-        children: [],
-        asNode() {
-          const textNode = document.createTextNode(child);
-          node.node = textNode;
-          console.log(textNode, node);
-
-          return textNode;
-        },
-        // top level vnode
-        diffAndPatch(newNode: VNode) {
-          // @TODO both text?
-          console.log("change? ", newNode.tag, node.tag);
-
-          if (newNode.tag !== node.tag) {
-            const asNode = newNode.asNode();
-            console.log({ asNode });
-
-            if (asNode) {
-              node.node.replaceWith(asNode);
-            } else {
-              node.node.parentNode.removeChild(node.node);
-            }
-
-            return;
-          }
-          if (child !== newNode.props.content)
-            node.node.nodeValue = newNode.props.content;
-            newNode.node = node.node;
-          // else ?
-        },
-      };
-
-      return node;
-    }),
-
-    asNode() {
-      console.log("asVNode.asNode", { tag, props, vNode });
-
-      const node = asNode(tag, attr, vNode.children)[0];
-      vNode.node = node;
-      return node;
-    },
-    // to level
-    diffAndPatch(newVNode: VNode) {
-      console.log("diffAndPatch");
-
-      // ? when?
-      if (!newVNode) {
-        (vNode.node! as HTMLElement).parentNode!.removeChild(
-          vNode.node! as HTMLElement
-        );
-        return;
-      }
-
-      if (newVNode.tag !== tag) {
-        const newNode = newVNode.asNode();
-        if (vNode.node) {
-          if (newNode) (vNode.node! as HTMLElement).replaceWith(newNode);
-          else vNode.node.parentNode.removeChild(vNode.node);
+        // ? when?
+        if (!newVNode) {
+          (vNode.node! as HTMLElement).parentNode!.removeChild(
+            vNode.node! as HTMLElement
+          );
+          return;
         }
-        return;
-      }
 
-      // @TODO: if special tags
+        if (newVNode.tag !== tag) {
+          const newNode = newVNode.asNode();
+          if (vNode.node) {
+            if (newNode) (vNode.node! as HTMLElement).replaceWith(newNode);
+            else vNode.node.parentNode.removeChild(vNode.node);
+          }
+          return;
+        }
 
-      // update props form new node
-      Object.entries(newVNode.props)
-        .filter(([k, v]) => props[k] !== v)
-        .forEach(([key, value]) => {
-          if (value === true) vNode.node.setAttribute(key, "");
-          else if (value === null || value === undefined || value === false)
+        // @TODO: if special tags
+
+        // update props form new node
+        Object.entries(newVNode.props)
+          .filter(([k, v]) => props[k] !== v)
+          .forEach(([key, value]) => {
+            if (value === true) vNode.node.setAttribute(key, "");
+            else if (value === null || value === undefined || value === false)
+              vNode.node.removeAttribute(key);
+            else vNode.node.setAttribute(key, value);
+          });
+
+        // remove old, obsolate attributes
+        Object.entries(vNode.props)
+          .filter(([k, v]) => !newVNode.props.hasOwnProperty(k))
+          .forEach(([key, value]) => {
             vNode.node.removeAttribute(key);
-          else vNode.node.setAttribute(key, value);
-        });
-
-      // remove old, obsolate attributes
-      Object.entries(vNode.props)
-        .filter(([k, v]) => !newVNode.props.hasOwnProperty(k))
-        .forEach(([key, value]) => {
-          vNode.node.removeAttribute(key);
-        });
+          });
 
         newVNode.node = vNode.node;
         console.log("node update", newVNode, vNode);
 
-      // @TODO: props not attributes
+        // @TODO: props not attributes
 
-      // children
-      vNode.children.forEach((child, ix) =>
-        child.diffAndPatch(newVNode.children[ix])
-      );
-      // @TODO: new children
-      for (let i = vNode.children.length; i < newVNode.children.length; i++) {
-        (vNode.node as HTMLElement).insertAdjacentElement(
-          "beforeend",
-          newVNode.children[i].asNode()
+        // children
+        vNode.children.forEach((child, ix) =>
+          child.diffAndPatch(newVNode.children[ix])
         );
-      }
-    },
-  });
+        // @TODO: new children
+        for (let i = vNode.children.length; i < newVNode.children.length; i++) {
+          vNode.node.insertAdjacentElement(
+            "beforeend",
+            newVNode.children[i].asNode()
+          );
+        }
+      },
+    });
+  } else {
+    Object.assign(vNode, {
+      tag,
+      type: "Fragment", // where comes Fragemnt?
+      tag2: "asVNode - normal return Fragment",
+      node: null,
+      children: children.flat().map((child) => {
+        if (child instanceof JsxNode) {
+          const childVNode = child.asVNode();
+          childVNode.parent = vNode;
+          return childVNode;
+        }
+        if (child instanceof Node) {
+          const node = {
+            tag: "__NODE__",
+            props: {
+              content: child,
+            },
+            parent: vNode,
+            children: [],
+            asNode() {
+              node.node = child;
+              return child;
+            },
+            diffAndPatch() {
+              console.log("__NODE__ diffAndPatch", child);
+            },
+          };
+
+          return node;
+        }
+
+        console.log("@@ map", { child });
+
+        if (child === null || child === false || child === undefined) {
+          const childVNode: VNode = {
+            tag: "__NULL__",
+            type: "Null",
+            tag2: "children null node",
+            node: null,
+            parent: vNode,
+            props: {},
+            children: [],
+            asNode() {
+              return null;
+            },
+            diffAndPatch(newNode: VNode) {
+              console.log("diff-AndPatch, child node was null", newNode);
+
+              if (newNode.tag === "__NULL__") return;
+              const n = newNode.asNode();
+              // @TODO: find item before
+              //vNode.node
+              const newNodeIndex = newNode.parent.children.indexOf(newNode);
+              const siblings = newNode.parent.children
+                .slice(0, newNodeIndex)
+                .reverse();
+              const siblingBefore = siblings.find((n: VNode) => n.node);
+              console.log({ siblingBefore, siblings, newNodeIndex, newNode });
+
+              if (siblingBefore) {
+                siblingBefore.node.insertAdjacentElement("afterend", n);
+              } else {
+                vNode.node.insertAdjacentElement("afterbegin", n);
+                /*(newNode.parent.node as HTMLElement).insertAdjacentElement(
+                  "afterbegin",
+                  newNode.asNode()
+                );*/
+              }
+            },
+          };
+
+          return childVNode;
+        }
+
+        console.log(":::", { child });
+
+        const node = {
+          tag: "__TEXT_NODE__",
+          type: "TextNode",
+          tag2: "children Text node",
+          node: null,
+          parent: vNode,
+          props: {
+            content: child,
+          },
+          children: [],
+          asNode() {
+            const textNode = document.createTextNode(child);
+            node.node = textNode;
+            console.log(textNode, node);
+
+            return textNode;
+          },
+          // top level vnode
+          diffAndPatch(newNode: VNode) {
+            // @TODO both text?
+            console.log("change? ", newNode.tag, node.tag);
+
+            if (newNode.tag !== node.tag) {
+              const asNode = newNode.asNode();
+              console.log({ asNode });
+
+              if (asNode) {
+                node.node.replaceWith(asNode);
+              } else {
+                node.node.parentNode.removeChild(node.node);
+              }
+
+              return;
+            }
+            if (child !== newNode.props.content)
+              node.node.nodeValue = newNode.props.content;
+            newNode.node = node.node;
+            // else ?
+          },
+        };
+
+        return node;
+      }),
+
+      asNode() {
+        console.log("asVNode.asNode", { tag, props, vNode });
+
+        const node = asNode(undefined, {}, vNode.children)[0];
+        // vNode.node = node;
+        console.log({ node });
+
+        return node;
+      },
+      // to level
+      diffAndPatch(newVNode: VNode) {
+        console.log("diffAndPatch");
+
+        return diffAndPatch(vNode, newVNode);
+      },
+    });
+  }
 
   return vNode;
 }
@@ -602,6 +1004,7 @@ export function jsxs(
     }
 
     asNode() {
+      throw new Error("deprecated jsxs");
       [node, jsxNodes] = asNode(tag, this.props);
 
       return node;
@@ -648,6 +1051,7 @@ export function Fragment(props: JsxProps) {
     }
 
     asNode() {
+      throw new Error("deprecated fragment");
       const fragments = this.props.children
         .flat()
         .filter(truthy)
@@ -666,9 +1070,7 @@ export function Fragment(props: JsxProps) {
     }
 
     asVNode() {
-      return asVNode("__Fragment__", {
-        children: props.children,
-      } as JsxProps);
+      return asVNode(/*"__Fragment__"*/ undefined, this.props);
     }
 
     [_callRefs]() {
@@ -703,30 +1105,48 @@ export function render(
   domNode: HTMLElement,
   append: boolean = false
 ) {
-  Array.from(document.body.querySelectorAll("*")).forEach(el => el.style.outline = "1px dashed red");
-  Array.from(document.body.querySelectorAll("*")).forEach(el => el.style.background = "pink");
-
+  Array.from(document.body.querySelectorAll("*")).forEach(
+    (el) => (el.style.background = "#ccffcc")
+  );
 
   const isReRender = renderedVTrees.has(domNode);
   if (!append && !isReRender) domNode.innerHTML = "";
 
   if (typeof markup === "string") {
-    domNode.insertAdjacentHTML("afterbegin", markup);
+    domNode.insertAdjacentHTML("beforeend", markup); // sanitize?
   } else if (markup instanceof Node) {
-    domNode.insertAdjacentElement("afterbegin", markup);
+    domNode.insertAdjacentElement("beforeend", markup);
   } else if (markup instanceof JsxNode) {
     svgContext = false;
-    const vTree = markup.asVNode();
-    console.log("vTree:", vTree);
+
+    // RootVNode
+    const vTree: RootVNode = {} as any;
+    Object.assign(vTree, {
+      type: "Root",
+      node: domNode,
+      tag: null,
+      parent: null,
+      children: [markup.asVNode()],
+      asNode() {
+        return vTree.children[0].asNode();
+      },
+      toString() {
+        return vTree.children[0].toString();
+      },
+    });
+
+    console.log("###########\n", "vTree:", vTree);
 
     if (isReRender) {
       console.log("is re-render");
       const oldVTree = renderedVTrees.get(domNode);
 
-      console.log({ oldVTree, newVTree: vTree });
+      console.log("###########\n", { oldVTree, newVTree: vTree });
 
       // diff
-      oldVTree.diffAndPatch(vTree);
+      //oldVTree.diffAndPatch(vTree);
+      diffAndPatch(oldVTree!, vTree);
+
       renderedVTrees.set(domNode, vTree);
       return;
     }
@@ -762,3 +1182,6 @@ export function rawHtml(content: string): JsxNodeInterface {
 }
 
 // vTree
+
+// gotchsas:
+// - styles will override (could do: setting each rule individually)
