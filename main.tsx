@@ -218,7 +218,7 @@ function markup2(num: any) {
   );
 }
 
-function markup(num: any) {
+function markup3(num: any) {
   return num === 1 ? (
     <h1>
       old-Headline {num}
@@ -228,7 +228,12 @@ function markup(num: any) {
         <p>1</p>
         <p>2</p>
         <p>3</p>
-        <svg viewBox="0 0 300 100" xmlns="http://www.w3.org/2000/svg" stroke="red" fill="grey">
+        <svg
+          viewBox="0 0 300 100"
+          xmlns="http://www.w3.org/2000/svg"
+          stroke="red"
+          fill="grey"
+        >
           <circle cx="50" cy="50" r="40" />
           <circle cx="150" cy="50" r="4" />
 
@@ -248,7 +253,12 @@ function markup(num: any) {
         <p>1</p>
         {undefined}
         <p>3</p>
-        <svg viewBox="0 0 300 100" xmlns="http://www.w3.org/2000/svg" stroke="red" fill="grey">
+        <svg
+          viewBox="0 0 300 100"
+          xmlns="http://www.w3.org/2000/svg"
+          stroke="red"
+          fill="grey"
+        >
           <circle cx="50" cy="50" r="40" />
           <circle cx="150" cy="50" r="4" />
 
@@ -258,6 +268,20 @@ function markup(num: any) {
         </svg>
         <p>new span B at end</p>
       </>
+    </h1>
+  );
+}
+const obj = { a: 1 };
+
+function markup(num: any) {
+  obj.a = num;
+  return num === 1 ? (
+    <h1 obj={obj} id={obj.a}>
+      old-Headline {num}
+    </h1>
+  ) : (
+    <h1 obj={obj} class="a" id={obj.a}>
+      new-Headline {num}
     </h1>
   );
 }

@@ -1,4 +1,5 @@
 const renderedVTrees = new WeakMap<HTMLElement, RootVNode>();
+const refsToCall: Function[] = [];
 /**
  * provides functions needed by babel for a custom pragma
  * to render parsed jsx code to html
@@ -114,7 +115,7 @@ type VNode = {
 function getParentElementNode(vNode: VNode): ElementVNode {
   while (vNode.parent) {
     vNode = vNode.parent;
-    if (vNode.type === "Element") return vNode;
+    if (vNode.node) return vNode;
   }
 
   // will never reach
@@ -1109,6 +1110,8 @@ export function render(
     (el) => (el.style.background = "#ccffcc")
   );
 
+  refsToCall.splice(0);
+
   const isReRender = renderedVTrees.has(domNode);
   if (!append && !isReRender) domNode.innerHTML = "";
 
@@ -1134,6 +1137,7 @@ export function render(
         return vTree.children[0].toString();
       },
     });
+    vTree.children[0].parent = vTree;
 
     console.log("###########\n", "vTree:", vTree);
 
@@ -1148,12 +1152,15 @@ export function render(
       diffAndPatch(oldVTree!, vTree);
 
       renderedVTrees.set(domNode, vTree);
-      return;
+    } else {
+      const content = vTree.asNode();
+      domNode.append(content);
     }
 
     renderedVTrees.set(domNode, vTree);
-    const content = vTree.asNode();
-    domNode.append(content);
+
+    refsToCall.forEach((cb) => cb());
+
     ////markup[_callRefs]();
   } else {
     throw new Error("render method called with wrong argument(s)");
