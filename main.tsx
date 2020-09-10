@@ -27,11 +27,13 @@ function Button({
       disabled={disabled}
       ref={(el: HTMLElement) => console.log("my button ::ref::1", el)}
     >
-      <span ref={(el: HTMLElement) => console.log("my a ::ref::2", el)}>Btn-span-first</span>
+      <span ref={(el: HTMLElement) => console.log("my a ::ref::2", el)}>
+        Btn-span-first
+      </span>
       {children}
       <>
         <span ref={(el: HTMLElement) => console.log("my a ::ref::3", el)}>
-        Btn-span-end
+          Btn-span-end
         </span>
       </>
     </button>
@@ -217,10 +219,14 @@ function markup2(num: any) {
     </div>
   );
 }
+function NL() {
+  return null;
+}
 
 function markup3(num: any) {
   return num === 1 ? (
     <h1>
+      <NL />
       A-Line 1 - {num}
       <Span mode={num} />
       <Button
@@ -237,7 +243,9 @@ function markup3(num: any) {
       </Button>
       A-Line 3
       <>
-        <p>A Frag line 1</p>
+        <p>
+          <p>A Frag line 1*</p>
+        </p>
         <p>A Frag line 2</p>
         <p>A Frag line 3</p>
         <p>A Frag line 4</p>
@@ -354,14 +362,33 @@ customElements.define("popup-info", PopUpInfo);
 //document.querySelector("#old")!.addEventListener("click", console.log);
 
 //document.body.innerHTML = markup;
-render(markup3(1), document.body);
+////render(markup3(1), document.body);
 //document.getElementById("outer")?.setAttribute("data-foo", "mod");
 
 //document.getElementById("inner")?.setAttribute("data-foo", "mod");
 //render(markup(2), document.body);
 //render(markup, document.body, true);
+function Comp2() {
+  return (
+    <>
+      <Comp3 />
+      {document.querySelector("#old")}
+    </>
+  );
+}
+function Comp3() {
+  return <div>comp content</div>;
+}
 
-window.reRender1 = () => render(markup3(1), document.body);
-window.reRender2 = () => render(markup3(2), document.body);
+window.reRender1 = () =>
+  render(markup3(1), document.getElementById("container"));
+window.reRender2 = () =>
+  render(markup3(2), document.getElementById("container"));
+window.reRender3 = () =>
+  render(
+    // <div>txt</div>
+    <Comp2 />,
+    document.getElementById("container")
+  );
 
 console.log("12345");

@@ -161,7 +161,7 @@ function getParentAndNextSibling(vNode: VNode): [Node, Node | null] {
     vNode,
     parentWithElement,
     prevSibling,
-    prevSiblingNode: prevSibling.node,
+    prevSiblingNode: prevSibling && prevSibling.node,
     nextSiblingNode,
   });
 
@@ -291,16 +291,9 @@ function asNode(
   // fragment
   if (!tag) {
     const fragments = children
-      .flat()
-      .filter((n) => n.tag !== "__NULL__")
-      //.filter(truthy)
+      .flat() // ?
       .map(
         (item) => item.asNode()
-        /*item instanceof Node
-            ? item
-            : item instanceof JsxNode
-            ? item.asNode()
-            : item*/
       );
 
     const documentFragment = document.createDocumentFragment();
@@ -522,7 +515,8 @@ function diffAndPatchChildren(
     newItems.forEach((item) => documentFragment.append(item.asNode()));
 
     // add to the end of parent node
-    if (newNode.node && false) { // other one would work the same
+    if (newNode.node && false) {
+      // other one would work the same
       newNode.node.insertBefore(documentFragment, null);
     }
     // or if node is not an element (i.e. a fragment) add after it.
@@ -536,6 +530,69 @@ function diffAndPatchChildren(
 }
 
 function asVNode(tag: string | Function | undefined, props: JsxProps): VNode {
+  console.log("asVNode:", { tag, props });
+
+  if (typeof tag === "function") {
+    let result = tag(props);
+    if (result instanceof JsxNode || (result && result.asNode)) {
+      //console.warn("asVNode with JsxNode");
+      return result;
+    }
+    // big @TODO:
+    if (result instanceof Node) {
+      return new LiveNodeVNode(result);
+      const node = {
+        node: undefined,
+        tag: "__NODE__",
+        type: "?",
+        parent: null,
+        props: {
+          content: result,
+        },
+        children: [],
+        asNode() {
+          node.node = result;
+          return result;
+        },
+        diffAndPatch() {
+          console.log("__NODE__ 1 diffAndPatch", result);
+        },
+      };
+
+      return node;
+    }
+
+    // null jsx node
+    if (!truthy(result)) {
+      return new NullVNode( );
+    }
+
+    return new TextVNode2(props);
+  }
+
+  const { children, ...attr } = props;
+  const vNode: VNode = {} as any;
+  if (tag) {
+    return new ElementVNode2(tag, attr, children); // or simply pass cildren with props
+
+  } else if (!truthy(attr)) {
+    const vNode = new NullVNode(); // @TODO: parent
+    vNode.parent = this;
+    return vNode;
+  }
+  // no tag (Fragment and Null?)
+  else if (children) {
+    console.log("Fragment VNode");
+
+    return new FragmentVNode(children);
+  }
+
+  // else? // @TODO:?
+}
+
+function asVNode2(tag: string | Function | undefined, props: JsxProps): VNode {
+  console.log("asVNode:", { tag, props });
+
   if (typeof tag === "function") {
     let result = tag(props);
     if (result instanceof JsxNode || (result && result.asNode)) {
@@ -566,17 +623,9 @@ function asVNode(tag: string | Function | undefined, props: JsxProps): VNode {
       return node;
     }
 
-    /*function getFirstElement(nnn: VNode) {
-      if (nnn.type === "Element") return nnn.node;
-      if (nnn.type === "Null") return null;
-      if (nnn.type === "Fragment") {
-        const item = nnn.children.find((n2) => getFirstElement(n2) !== null);
-        return item ? item.node : null;
-      }
-    }*/
-
     // null jsx node
     if (!truthy(result)) {
+      return new NullVNode({ parent: null });
       const fooNode: VNode = {} as any;
       Object.assign(fooNode, {
         tag: "__NULL__",
@@ -596,6 +645,8 @@ function asVNode(tag: string | Function | undefined, props: JsxProps): VNode {
 
       return fooNode;
     }
+
+    return new TextVNode2(props);
 
     const node = {
       tag: "__TEXT_NODE__",
@@ -634,6 +685,7 @@ function asVNode(tag: string | Function | undefined, props: JsxProps): VNode {
   const { children, ...attr } = props;
   const vNode: VNode = {} as any;
   if (tag) {
+    return new ElementVNode2(tag, attr, children); // or simply pass cildren with props
     Object.assign(vNode, {
       tag,
       type: "Element", // where comes Fragemnt?
@@ -679,7 +731,7 @@ function asVNode(tag: string | Function | undefined, props: JsxProps): VNode {
             props: {},
             children: [],
             asNode() {
-              return document.createDocumentFragment();//return null;
+              return document.createDocumentFragment(); //return null;
             },
             diffAndPatch(newNode: VNode) {
               console.log("diff-AndPatch, child node was null", newNode);
@@ -825,10 +877,14 @@ function asVNode(tag: string | Function | undefined, props: JsxProps): VNode {
         }
       },
     });
+  } else if (!truthy(attr)) {
+    return new NullVNode(); // @TODO: parent
   }
   // no tag (Fragment and Null?)
-  else {
+  else if (children) {
     console.log("Fragment VNode");
+
+    return new FragmentVNode(children);
 
     Object.assign(vNode, {
       tag,
@@ -838,7 +894,7 @@ function asVNode(tag: string | Function | undefined, props: JsxProps): VNode {
       children: children.flat().map((child) => {
         if (child instanceof JsxNode || (child && child.asNode)) {
           const childVNode = child; //child.asVNode();
-          childVNode.parent = vNode;
+          childVNode.parent  = vNode;
           return childVNode;
         }
         if (child instanceof Node) {
@@ -861,9 +917,12 @@ function asVNode(tag: string | Function | undefined, props: JsxProps): VNode {
           return node;
         }
 
-        console.log("@@ map", { child });
+        console.log("@@ map 2", { child });
 
         if (child === null || child === false || child === undefined) {
+          const n = new NullVNode(this); // n.paremt =
+          return n;
+
           const childVNode: VNode = {
             tag: "__NULL__",
             type: "Null",
@@ -992,7 +1051,7 @@ export function jsxs(
   const ref: Function | null =
     typeof props.ref === "function" ? props.ref : null;
   if (ref) delete props.ref;
-
+  /*
   const inst = new (class extends JsxNode implements JsxNodeInterface {
     toString() {
       return asHtmlString(tag, this.props);
@@ -1024,7 +1083,8 @@ export function jsxs(
     }
   })(props);
 
-  const v = inst.asVNode();
+  const v = inst.asVNode();*/
+  return asVNode(tag, props);
   return v;
 }
 
@@ -1035,7 +1095,7 @@ export function jsxs(
  * @param {Array} props.children - child elements in the fragment
  */
 export function Fragment(props: JsxProps) {
-  const inst = new (class extends JsxNode implements JsxNodeInterface {
+  /*const inst = new (class extends JsxNode implements JsxNodeInterface {
     toString() {
       return this.props.children
         .flat()
@@ -1070,7 +1130,7 @@ export function Fragment(props: JsxProps) {
     }
 
     asVNode() {
-      return asVNode(/*"__Fragment__"*/ undefined, this.props);
+      return asVNode(/*"__Fragment__"* / undefined, this.props);
     }
 
     [_callRefs]() {
@@ -1078,9 +1138,10 @@ export function Fragment(props: JsxProps) {
         .filter((child) => child instanceof JsxNode || (child && child.asNode))
         .forEach((child) => (child as JsxNodeInterface)[_callRefs]());
     }
-  })(props);
+  })(props);*/
 
-  return inst.asVNode();
+  //return inst.asVNode();
+  return asVNode(undefined, props);
 }
 
 // jsx is called when the element has one or zero children
@@ -1124,7 +1185,7 @@ export function render(
     svgContext = false;
 
     // RootVNode
-    const vTree: RootVNode = {} as any;
+    /*const vTree: RootVNode = {} as any;
     Object.assign(vTree, {
       type: "Root",
       node: domNode,
@@ -1138,7 +1199,9 @@ export function render(
         return vTree.children[0].toString();
       },
     });
-    vTree.children[0].parent = vTree;
+    vTree.children[0].parent  = vTree;*/
+
+    const vTree = new RootVNode2(markup, domNode);
 
     console.log("###########\n", "vTree:", vTree);
 
@@ -1149,8 +1212,8 @@ export function render(
       console.log("###########\n", { oldVTree, newVTree: vTree });
 
       // diff
-      //oldVTree.diffAndPatch(vTree);
-      diffAndPatch(oldVTree!, vTree);
+      oldVTree.diffAndPatch(vTree);
+      //diffAndPatch(oldVTree!, vTree);
 
       renderedVTrees.set(domNode, vTree);
     } else {
@@ -1213,13 +1276,87 @@ class ElementVNode2 implements VNodeInterface {
   constructor(
     private tag: string,
     private props: Record<string, any>,
-    public children: VNode[]
-  ) {}
+    children: VNode[]
+  ) {
+    this.children = children.flat().map((child) => {
+      if (!child) console.log("child nullish", { child, vNode: this });
+      if (child instanceof JsxNode || (child && child.asNode)) {
+        const childVNode = child; //child.asVNode();
+        childVNode.parent = this;
+        return childVNode;
+      }
+      if (child instanceof Node) {
+        const n =  new LiveNodeVNode(child);
+        n.parent = this;
+        return n;
+      }
+
+      console.log("@@ map 3", { child });
+
+      if (!truthy(child)) {
+        const childVNode = new NullVNode();
+        childVNode.parent = this;
+
+
+        return childVNode;
+      }
+
+      console.log(":::", { child });
+
+      const n = new TextVNode2({ child }); // asVnode
+      n.parent = this;
+      return n;
+      const node = {
+        tag: "__TEXT_NODE__",
+        type: "TextNode",
+        tag2: "children Text node 3",
+        node: null,
+        parent: vNode,
+        props: {
+          content: child,
+        },
+        children: [],
+        asNode() {
+          const textNode = document.createTextNode(child);
+          node.node = textNode;
+          console.log(textNode, node);
+
+          return textNode;
+        },
+        // top level vnode
+        diffAndPatch(newNode: VNode) {
+          // @TODO both text?
+          console.log("change? ", newNode.tag, node.tag);
+
+          if (newNode.tag !== node.tag) {
+            const asNode = newNode.asNode();
+            console.log({ asNode });
+
+            if (asNode) {
+              node.node.replaceWith(asNode);
+            } else {
+              node.node.parentNode.removeChild(node.node);
+            }
+
+            return;
+          }
+          if (child !== newNode.props.content)
+            node.node.nodeValue = newNode.props.content;
+          newNode.node = node.node;
+          // else ?
+        },
+      };
+
+      return node;
+    });
+  }
   toString() {
     return "?";
   }
   asNode() {
-    return asNode(this.tag, this.props, this.children)[0];
+    const node = asNode(this.tag, this.props, this.children)[0];
+    this.node = node;
+    return node;
   }
   // @TODO: doesn't need to be in VNode,
   // basically only the check if it has .node or itter over children (are VNodes! not Nodes)
@@ -1271,7 +1408,34 @@ class FragmentVNode implements VNodeInterface {
   type = "Fragment";
   // parent? @TODO: where will parent be asigned?
 
-  constructor(public children: VNodeInterface[]) {}
+  constructor(children: VNodeInterface[]) {
+    this.children = children.flat().map((child) => {
+      if (child instanceof JsxNode || (child && child.asNode)) {
+        const childVNode = child; //child.asVNode();
+        childVNode.parent = this;
+        return childVNode;
+      }
+      if (child instanceof Node) {
+        const n =  new LiveNodeVNode(child);
+        n.parent = this;
+        return n;
+      }
+
+      console.log("@@ map 2", { child });
+
+      if (!truthy(child)) {
+        const childVNode = new NullVNode(); // n.paremt =
+        childVNode.parent = this;
+        return childVNode;
+      }
+
+      console.log(":::", { child });
+
+      const tn = new TextVNode2({ child });
+      tn.parent = this;
+      return tn;
+    });
+  }
 
   asNode() {
     const node = asNode(undefined, {}, this.children)[0];
@@ -1302,8 +1466,8 @@ class TextVNode2 implements VNodeInterface {
   /**
    *
    */
-  constructor(props) {
-    this.props = props.child; //@TODO:
+  constructor({ child }) {
+    this.props = { content: child }; //@TODO:
   }
 
   asNode() {
@@ -1324,10 +1488,6 @@ class TextVNode2 implements VNodeInterface {
 class NullVNode implements VNodeInterface {
   type = "Null";
   children = [];
-  /**
-   *
-   */
-  constructor() {}
 
   asNode() {
     //return null; // return empty fragment?
@@ -1347,6 +1507,37 @@ class NullVNode implements VNodeInterface {
   }
 }
 
+class LiveNodeVNode implements VNodeInterface {
+  type = "Node";
+  children = [];
+
+  /**
+   *
+   */
+  constructor(node: Node) {
+    this.node = node
+
+  }
+
+  asNode() {
+    return this.node;
+  }
+
+  diffAndPatch(newNode: NullVNode) {
+    if (newNode.node !== node) {
+      this.node.replaceWith(newNode.node);
+    }
+  }
+
+  removeFromDOM() {
+    this.node.parentElement!.removeChild(this.node);
+  }
+
+  toString() {
+    return getOuterHtml(this.node);
+  }
+}
+
 class RootVNode2 implements VNodeInterface {
   type = "Root";
   parent = null;
@@ -1356,7 +1547,8 @@ class RootVNode2 implements VNodeInterface {
    *
    */
   constructor(content, domNode: Element) {
-    this.children = [content.asVNode()];
+    content.parent = this;
+    this.children = [content];
     this.node = domNode;
   }
 
