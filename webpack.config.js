@@ -7,7 +7,7 @@ module.exports = {
   output: {
     filename: '[name].js',
   },
-  devtool: 'inline-source-map',
+  devtool: 'inline-source-map',//'none',
   module: {
     rules: [
       {

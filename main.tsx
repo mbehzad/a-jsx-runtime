@@ -27,11 +27,11 @@ function Button({
       disabled={disabled}
       ref={(el: HTMLElement) => console.log("my button ::ref::1", el)}
     >
-      <span ref={(el: HTMLElement) => console.log("my a ::ref::2", el)}>a</span>
+      <span ref={(el: HTMLElement) => console.log("my a ::ref::2", el)}>Btn-span-first</span>
       {children}
       <>
         <span ref={(el: HTMLElement) => console.log("my a ::ref::3", el)}>
-          a
+        Btn-span-end
         </span>
       </>
     </button>
@@ -221,13 +221,26 @@ function markup2(num: any) {
 function markup3(num: any) {
   return num === 1 ? (
     <h1>
-      old-Headline {num}
-      foo
+      A-Line 1 - {num}
+      <Span mode={num} />
+      <Button
+        disabled={true}
+        ref={(el: HTMLElement) => console.log("my BUTTON::ref::5", el)}
+      >
+        text
+        <popup-info
+          ref={(el: HTMLElement) => console.log("span in BUTTON::ref::6", el)}
+        >
+          bla
+        </popup-info>
+        <p>inner p {num}</p>
+      </Button>
+      A-Line 3
       <>
-        <p>old-span A</p>
-        <p>1</p>
-        <p>2</p>
-        <p>3</p>
+        <p>A Frag line 1</p>
+        <p>A Frag line 2</p>
+        <p>A Frag line 3</p>
+        <p>A Frag line 4</p>
         <svg
           viewBox="0 0 300 100"
           xmlns="http://www.w3.org/2000/svg"
@@ -246,13 +259,30 @@ function markup3(num: any) {
     </h1>
   ) : (
     <h1 class="a">
-      new-Headline {num}
-      {false}
+      B Line 1 - {num}
+      <Span mode={num} />
+      <Button
+        disabled={true}
+        ref={(el: HTMLElement) => console.log("my BUTTON::ref::5", el)}
+      >
+        text
+        <popup-info
+          ref={(el: HTMLElement) => console.log("span in BUTTON::ref::6", el)}
+        >
+          bla
+        </popup-info>
+        <p>{num}</p>
+      </Button>
       <>
-        <p>new-span A</p>
-        <p>1</p>
+        {false}
+        {null}
         {undefined}
-        <p>3</p>
+      </>
+      <>
+        <p>B Frag line 1</p>
+        <p>B Frag line 2</p>
+        {undefined}
+        <p>B Frag line 3(4)</p>
         <svg
           viewBox="0 0 300 100"
           xmlns="http://www.w3.org/2000/svg"
@@ -266,14 +296,14 @@ function markup3(num: any) {
             <circle cx="5" cy="5" r="6" />
           </svg>
         </svg>
-        <p>new span B at end</p>
+        <p>B Frag line 4(6)</p>
       </>
     </h1>
   );
 }
 const obj = { a: 1 };
 
-function markup(num: any) {
+function markup4(num: any) {
   obj.a = num;
   return num === 1 ? (
     <h1 obj={obj} id={obj.a}>
@@ -282,6 +312,21 @@ function markup(num: any) {
   ) : (
     <h1 obj={obj} class="a" id={obj.a}>
       new-Headline {num}
+    </h1>
+  );
+}
+
+function markup(num: any) {
+  return num === 1 ? (
+    <div>
+      <>
+        <p>frag - I</p>
+        <b> frag - II</b>
+      </>
+    </div>
+  ) : (
+    <h1 class="a">
+      {"new-Headline"} {num}
     </h1>
   );
 }
@@ -309,12 +354,14 @@ customElements.define("popup-info", PopUpInfo);
 //document.querySelector("#old")!.addEventListener("click", console.log);
 
 //document.body.innerHTML = markup;
-render(markup(1), document.body);
+render(markup3(1), document.body);
 //document.getElementById("outer")?.setAttribute("data-foo", "mod");
 
 //document.getElementById("inner")?.setAttribute("data-foo", "mod");
 //render(markup(2), document.body);
 //render(markup, document.body, true);
 
-window.reRender1 = () => render(markup(1), document.body);
-window.reRender2 = () => render(markup(2), document.body);
+window.reRender1 = () => render(markup3(1), document.body);
+window.reRender2 = () => render(markup3(2), document.body);
+
+console.log("12345");

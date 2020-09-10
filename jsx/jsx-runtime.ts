@@ -113,61 +113,59 @@ type VNode = {
 
 // null when checking the parent when root is fragment itself
 function getParentElementNode(vNode: VNode): ElementVNode {
+  console.log("getParentElementNode", vNode);
+
   while (vNode.parent) {
     vNode = vNode.parent;
-    if (vNode.node) return vNode;
+    // `.node` is only on "Text" and "Element" type VNode, and only Element has children
+    if (vNode.node) break;
   }
 
-  // will never reach
-  throw new Error("jsx-runtime: can't find a parent with Element");
+  console.log("found: ", vNode);
+
+  return vNode as ElementVNode;
 }
 
-function getChildElementNodes(
-  vNode: VNode,
-  alwaysAllow: VNode[] = []
+type VNodeLikeWithChildren = {
+  node?: Node | null;
+  children: Array<VNodeLikeWithChildren>;
+  [key: string]: any;
+};
+
+function getChildrenWithNodes(
+  vNode: VNodeLikeWithChildren,
+  alwaysAllow: VNodeLikeWithChildren = []
 ): VNode[] {
   return vNode.children
-    .map((childNode: VNode) => {
-      if (alwaysAllow.includes(childNode)) return childNode;
-      if (childNode.type === "Null") return null;
-      if (childNode.type === "Element" || childNode.type === "TextNode")
-        return childNode;
-      if (childNode.type === "Fragment") return getChildElementNodes(childNode);
+    .map((childNode: VNodeLikeWithChildren) => {
+      if (childNode === alwaysAllow) return childNode;
+      //if (childNode.type === "Null") return null;
+      if (childNode.node) return childNode;
+      //if (childNode.type === "Fragment")
+      //return getChildrenWithNodes(childNode, alwaysAllow);
       // @TODO: other types (i.e. Live Element)
-      return null;
+      return getChildrenWithNodes(childNode, alwaysAllow);
     })
     .flat(Infinity)
     .filter(Boolean) as VNode[];
 }
 
-function getSiblings(vNode: VNode) {
-  return getChildElementNodes(getParentElementNode(vNode), [vNode]);
-}
-
 function getParentAndNextSibling(vNode: VNode): [Node, Node | null] {
   // node ancestor with Element,
   const parentWithElement = getParentElementNode(vNode);
-  const siblings = getChildElementNodes(parentWithElement, [vNode]);
+  const siblings = getChildrenWithNodes(parentWithElement, vNode);
   const prevSibling = siblings[siblings.indexOf(vNode) - 1];
   const nextSiblingNode = prevSibling ? prevSibling.node!.nextSibling : null;
-  //const nextSiblingNode = nextSibling ? nextSibling.node : null;
 
-  console.log("getParentAndNextSibling:", {
+  console.log("getParentAndNextSibling", {
     vNode,
     parentWithElement,
-    siblings,
+    prevSibling,
+    prevSiblingNode: prevSibling.node,
     nextSiblingNode,
-    index: siblings.indexOf(vNode),
   });
 
   return [parentWithElement.node, nextSiblingNode];
-  // all flat child nodes +
-}
-
-function findPrevSibling(vNode: VNode): VNode | null {
-  const siblings = getSiblings(vNode);
-  let siblingBefore = siblings[siblings.indexOf(vNode) - 1] || null;
-  return siblingBefore;
 }
 
 // private key for calling the `ref` callers
@@ -285,7 +283,7 @@ function asHtmlString(tag: string | Function, props: JsxProps) {
  */
 function asNode(
   tag: string | Function | undefined,
-  props: JsxProps,
+  props: Attributes & SpecialAttributes, //JsxProps,
   children: any[]
 ): [Node, JsxNodeInterface[]] {
   console.log("asNode()", { tag, props, children });
@@ -320,7 +318,7 @@ function asNode(
 
     let jsxNodes: JsxNodeInterface[] = [];
 
-    if (result instanceof JsxNode) {
+    if (result instanceof JsxNode || (result && result.asNode)) {
       jsxNodes = [result as JsxNodeInterface];
       result = (result as JsxNodeInterface).asNode();
       Object.entries(props).forEach(([key, value]) => {
@@ -393,7 +391,9 @@ function asNode(
     });
 
   // returns child jsx nodes as well to be used during the ref call
-  const childJsxNodes = children.filter((child) => child instanceof JsxNode);
+  const childJsxNodes = children.filter(
+    (child) => child instanceof JsxNode || (child && child.asNode)
+  );
 
   console.log({ children });
 
@@ -430,13 +430,14 @@ function removeItem(item: VNode) {
   if (item.type === "Element" || item.type === "TextNode")
     item.node.parentElement!.removeChild(item.node);
   else if (item.type === "Fragment")
-    getChildElementNodes(item).forEach((node) =>
+    getChildrenWithNodes(item).forEach((node) =>
       node.node!.parentElement!.removeChild(node.node!)
     );
   // @TODO: else -> VNode method actually
 }
 
 function insertNewItem(newNode: VNode) {
+  // @TODO: Null not necccesery as asNode will return an empty Fragment, and make the method more generic
   if (newNode.type !== "Null") {
     const [parent, nextSibling] = getParentAndNextSibling(newNode);
     parent.insertBefore(newNode.asNode(), nextSibling);
@@ -502,8 +503,8 @@ function diffAndPatch(oldNode: VNode | RootVNode, newNode: VNode | RootVNode) {
 }
 
 function diffAndPatchChildren(
-  oldNode: VNode | RootVNode,
-  newNode: VNode | RootVNode
+  oldNode: VNode | RootVNode | VNodeInterface,
+  newNode: VNode | RootVNode | VNodeInterface
 ) {
   oldNode.children.forEach((oldChild, ix) => {
     const newChild = newNode.children[ix];
@@ -514,27 +515,38 @@ function diffAndPatchChildren(
     }
   });
 
-  const documentFragment = document.createDocumentFragment();
   // new addition items
-  for (let i = oldNode.children.length; i < newNode.children.length; i++) {
-    if (newNode.children[i].type !== "Null")
-      documentFragment.append(newNode.children[i].asNode());
+  const newItems = newNode.children.slice(oldNode.children.length);
+  if (newItems.length) {
+    const documentFragment = document.createDocumentFragment();
+    newItems.forEach((item) => documentFragment.append(item.asNode()));
+
+    // add to the end of parent node
+    if (newNode.node && false) { // other one would work the same
+      newNode.node.insertBefore(documentFragment, null);
+    }
+    // or if node is not an element (i.e. a fragment) add after it.
+    else {
+      // @TODO:  returns items before vnode and their next sibling aka first frag item!
+
+      const [parent, nextSibling] = getParentAndNextSibling(newItems[0]);
+      parent.insertBefore(documentFragment, nextSibling);
+    }
   }
-  (newNode.node
-    ? newNode.node
-    : getParentElementNode(newNode).node
-  ).insertBefore(documentFragment, null);
 }
 
 function asVNode(tag: string | Function | undefined, props: JsxProps): VNode {
   if (typeof tag === "function") {
     let result = tag(props);
-    if (result instanceof JsxNode) {
+    if (result instanceof JsxNode || (result && result.asNode)) {
+      //console.warn("asVNode with JsxNode");
+      return result;
       return (result as JsxNodeInterface).asVNode();
     }
     // big @TODO:
     if (result instanceof Node) {
       const node = {
+        node: undefined,
         tag: "__NODE__",
         type: "?",
         parent: null,
@@ -565,7 +577,7 @@ function asVNode(tag: string | Function | undefined, props: JsxProps): VNode {
 
     // null jsx node
     if (!truthy(result)) {
-      const fooNode: VNode = {};
+      const fooNode: VNode = {} as any;
       Object.assign(fooNode, {
         tag: "__NULL__",
         type: "Null",
@@ -579,31 +591,6 @@ function asVNode(tag: string | Function | undefined, props: JsxProps): VNode {
         },
         diffAndPatch(newNode: VNode) {
           return diffAndPatch(fooNode, newNode);
-
-          if (newNode.type === "Null") return;
-          const n = newNode.asNode();
-
-          // @TODO: find item before
-          //vNode.node
-          const siblings = getSiblings(newNode);
-          const newNodeIndex = siblings.indexOf(newNode);
-
-          let siblingBefore = siblings[newNodeIndex - 1] || null; // = siblings.find((n: VNode) => n.node);
-          /*for (let ii = newNodeIndex - 1; ii >= 0; ii--) {
-            const el = getFirstElement(siblings[ii]);
-            if (el) {
-              siblingBefore = el;
-              break;
-            }
-          }*/
-          if (siblingBefore) {
-            if (n) siblingBefore.node.insertAdjacentElement("afterend", n);
-          } else {
-            getParentElementNode(newNode).node.insertAdjacentElement(
-              "afterbegin",
-              n
-            );
-          }
         },
       });
 
@@ -612,7 +599,7 @@ function asVNode(tag: string | Function | undefined, props: JsxProps): VNode {
 
     const node = {
       tag: "__TEXT_NODE__",
-      tpye: "TextNode",
+      type: "TextNode",
       tag1: 1,
       node: null,
       parent: null,
@@ -645,7 +632,7 @@ function asVNode(tag: string | Function | undefined, props: JsxProps): VNode {
   }
 
   const { children, ...attr } = props;
-  const vNode: VNode = {};
+  const vNode: VNode = {} as any;
   if (tag) {
     Object.assign(vNode, {
       tag,
@@ -654,8 +641,9 @@ function asVNode(tag: string | Function | undefined, props: JsxProps): VNode {
       node: null,
       props: attr,
       children: children.flat().map((child) => {
-        if (child instanceof JsxNode) {
-          const childVNode = child.asVNode();
+        if (!child) console.log("child nullish", { child, vNode });
+        if (child instanceof JsxNode || (child && child.asNode)) {
+          const childVNode = child; //child.asVNode();
           childVNode.parent = vNode;
           return childVNode;
         }
@@ -691,7 +679,7 @@ function asVNode(tag: string | Function | undefined, props: JsxProps): VNode {
             props: {},
             children: [],
             asNode() {
-              return null;
+              return document.createDocumentFragment();//return null;
             },
             diffAndPatch(newNode: VNode) {
               console.log("diff-AndPatch, child node was null", newNode);
@@ -727,7 +715,7 @@ function asVNode(tag: string | Function | undefined, props: JsxProps): VNode {
         const node = {
           tag: "__TEXT_NODE__",
           type: "TextNode",
-          tag2: "children Text node",
+          tag2: "children Text node 3",
           node: null,
           parent: vNode,
           props: {
@@ -837,15 +825,19 @@ function asVNode(tag: string | Function | undefined, props: JsxProps): VNode {
         }
       },
     });
-  } else {
+  }
+  // no tag (Fragment and Null?)
+  else {
+    console.log("Fragment VNode");
+
     Object.assign(vNode, {
       tag,
-      type: "Fragment", // where comes Fragemnt?
+      type: "Fragment", // where comes Fragment?
       tag2: "asVNode - normal return Fragment",
       node: null,
       children: children.flat().map((child) => {
-        if (child instanceof JsxNode) {
-          const childVNode = child.asVNode();
+        if (child instanceof JsxNode || (child && child.asNode)) {
+          const childVNode = child; //child.asVNode();
           childVNode.parent = vNode;
           return childVNode;
         }
@@ -976,6 +968,8 @@ function asVNode(tag: string | Function | undefined, props: JsxProps): VNode {
     });
   }
 
+  console.log({ vNode });
+
   return vNode;
 }
 
@@ -999,7 +993,7 @@ export function jsxs(
     typeof props.ref === "function" ? props.ref : null;
   if (ref) delete props.ref;
 
-  return new (class extends JsxNode implements JsxNodeInterface {
+  const inst = new (class extends JsxNode implements JsxNodeInterface {
     toString() {
       return asHtmlString(tag, this.props);
     }
@@ -1022,11 +1016,16 @@ export function jsxs(
       } else if (this.props.children) {
         this.props.children
           .flat()
-          .filter((child) => child instanceof JsxNode)
+          .filter(
+            (child) => child instanceof JsxNode || (child && child.asNode)
+          )
           .forEach((child) => (child as JsxNodeInterface)[_callRefs]());
       }
     }
   })(props);
+
+  const v = inst.asVNode();
+  return v;
 }
 
 /**
@@ -1036,7 +1035,7 @@ export function jsxs(
  * @param {Array} props.children - child elements in the fragment
  */
 export function Fragment(props: JsxProps) {
-  return new (class extends JsxNode implements JsxNodeInterface {
+  const inst = new (class extends JsxNode implements JsxNodeInterface {
     toString() {
       return this.props.children
         .flat()
@@ -1059,7 +1058,7 @@ export function Fragment(props: JsxProps) {
         .map((item) =>
           item instanceof Node
             ? item
-            : item instanceof JsxNode
+            : item instanceof JsxNode || (item && item.asNode)
             ? item.asNode()
             : item
         );
@@ -1076,10 +1075,12 @@ export function Fragment(props: JsxProps) {
 
     [_callRefs]() {
       this.props.children
-        .filter((child) => child instanceof JsxNode)
+        .filter((child) => child instanceof JsxNode || (child && child.asNode))
         .forEach((child) => (child as JsxNodeInterface)[_callRefs]());
     }
   })(props);
+
+  return inst.asVNode();
 }
 
 // jsx is called when the element has one or zero children
@@ -1119,7 +1120,7 @@ export function render(
     domNode.insertAdjacentHTML("beforeend", markup); // sanitize?
   } else if (markup instanceof Node) {
     domNode.insertAdjacentElement("beforeend", markup);
-  } else if (markup instanceof JsxNode) {
+  } else if (markup instanceof JsxNode || (markup && markup.asNode)) {
     svgContext = false;
 
     // RootVNode
@@ -1129,7 +1130,7 @@ export function render(
       node: domNode,
       tag: null,
       parent: null,
-      children: [markup.asVNode()],
+      children: [markup], //[markup.asVNode()],
       asNode() {
         return vTree.children[0].asNode();
       },
@@ -1192,3 +1193,185 @@ export function rawHtml(content: string): JsxNodeInterface {
 
 // gotchsas:
 // - styles will override (could do: setting each rule individually)
+
+interface VNodeInterface {
+  toString(): string;
+  asNode(): Node;
+  parent: VNode | null;
+  children: VNodeInterface[];
+  type: string;
+  node?: Element | Text;
+  getChildrenWithNodes(alwaysAllow: VNode[]): VNode[];
+  removeFromDOM(): void;
+  diffAndPatch(newNode: VNodeInterface): void;
+}
+
+class ElementVNode2 implements VNodeInterface {
+  type = "Element";
+  node = null as any;
+
+  constructor(
+    private tag: string,
+    private props: Record<string, any>,
+    public children: VNode[]
+  ) {}
+  toString() {
+    return "?";
+  }
+  asNode() {
+    return asNode(this.tag, this.props, this.children)[0];
+  }
+  // @TODO: doesn't need to be in VNode,
+  // basically only the check if it has .node or itter over children (are VNodes! not Nodes)
+  getChildrenWithNodes(alwaysAllow: VNode[]) {
+    return this.children
+      .map((childNode: VNode) => {
+        if (alwaysAllow.includes(childNode)) return childNode;
+        return childNode.node || childNode.getChildrenWithNodes();
+      })
+      .flat(Infinity)
+      .filter(Boolean) as VNode[];
+  }
+  removeFromDOM() {
+    this.node.parentElement.removeChild(this.node);
+  }
+  diffAndPatch(newNode: ElementVNode) {
+    if (newNode.tag === this.tag) {
+      newNode.node = this.node;
+      //      patch props,
+      // update props form new node
+      Object.entries(newNode.props)
+        .filter(([k, v]) => this.props[k] !== v)
+        .forEach(([key, value]) => {
+          if (value === true) newNode.node.setAttribute(key, "");
+          else if (value === null || value === undefined || value === false)
+            newNode.node.removeAttribute(key);
+          else newNode.node.setAttribute(key, value);
+        });
+
+      // remove old, obsolate attributes
+      Object.entries(this.props)
+        .filter(([k, v]) => !newNode.props.hasOwnProperty(k))
+        .forEach(([key, value]) => {
+          this.node.removeAttribute(key);
+        });
+
+      // children => iter and patch
+      // old children being modified
+      diffAndPatchChildren(this, newNode);
+    }
+    // tag has changed
+    else {
+      this.node.replaceWith(newNode.asNode());
+    }
+  }
+}
+
+class FragmentVNode implements VNodeInterface {
+  type = "Fragment";
+  // parent? @TODO: where will parent be asigned?
+
+  constructor(public children: VNodeInterface[]) {}
+
+  asNode() {
+    const node = asNode(undefined, {}, this.children)[0];
+    // vNode.node = node;
+    console.log({ node });
+
+    return node;
+  }
+  // to level
+  diffAndPatch(newVNode: FragmentVNode) {
+    console.log("diffAndPatch");
+
+    return diffAndPatchChildren(this, newVNode);
+  }
+
+  removeFromDOM() {
+    getChildrenWithNodes(this).forEach((node) =>
+      node.node!.parentElement!.removeChild(node.node!)
+    );
+  }
+}
+
+class TextVNode2 implements VNodeInterface {
+  type = "TextNode";
+  node: Text = null as any;
+  children = [];
+  props: { content: any };
+  /**
+   *
+   */
+  constructor(props) {
+    this.props = props.child; //@TODO:
+  }
+
+  asNode() {
+    const textNode = document.createTextNode(this.props.content);
+    this.node = textNode;
+    return textNode;
+  }
+
+  diffAndPatch(newNode: TextVNode2) {
+    this.node.nodeValue = newNode.props.content;
+  }
+
+  removeFromDOM() {
+    this.node.parentElement!.removeChild(this.node);
+  }
+}
+
+class NullVNode implements VNodeInterface {
+  type = "Null";
+  children = [];
+  /**
+   *
+   */
+  constructor() {}
+
+  asNode() {
+    //return null; // return empty fragment?
+    return document.createDocumentFragment();
+  }
+
+  diffAndPatch(newNode: NullVNode) {
+    return;
+  }
+
+  removeFromDOM() {
+    return;
+  }
+
+  toString() {
+    return "";
+  }
+}
+
+class RootVNode2 implements VNodeInterface {
+  type = "Root";
+  parent = null;
+  node: Element;
+  children: VNodeInterface[];
+  /**
+   *
+   */
+  constructor(content, domNode: Element) {
+    this.children = [content.asVNode()];
+    this.node = domNode;
+  }
+
+  asNode() {
+    return this.children[0].asNode();
+  }
+  toString() {
+    return this.children[0].toString();
+  }
+
+  diffAndPatch(newVNode: VNodeInterface) {
+    diffAndPatchChildren(this, newVNode);
+  }
+
+  removeFromDOM() {
+    this.node.remove();
+  }
+}
