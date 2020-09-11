@@ -44,19 +44,15 @@ class JsxNode {
   }
 }
 
-class VNode {}
-
 // null when checking the parent when root is fragment itself
 function getParentElementNode(vNode: VNodeInterface): ElementVNode {
   console.log("getParentElementNode", vNode);
 
   while (vNode.parent) {
     vNode = vNode.parent;
-    // `.node` is only on "Text" and "Element" type VNode, and only Element has children
+    // `.node` is only on "Text" and "Element", "RawHtml" type VNode, and only Element has children
     if (vNode.node) break;
   }
-
-  console.log("found: ", vNode);
 
   return (vNode as unknown) as ElementVNode;
 }
@@ -79,6 +75,8 @@ function getParentAndNextSibling(vNode: VNodeInterface): [Node, Node | null] {
   // node ancestor with Element,
   const parentWithElement = getParentElementNode(vNode);
   const siblings = getChildrenWithNodes(parentWithElement, vNode);
+  console.log("siblings", siblings);
+
   const prevSibling = siblings[siblings.indexOf(vNode) - 1];
   const nextSiblingNode = prevSibling ? prevSibling.node!.nextSibling : null;
 
@@ -297,7 +295,9 @@ function asNode(
 }
 
 function insertNewItem(newNode: VNodeInterface) {
+
   const [parent, nextSibling] = getParentAndNextSibling(newNode);
+  console.log("insertNewItem", {newNode, parent, nextSibling});
   parent.insertBefore(newNode.asNode(), nextSibling);
 }
 
@@ -313,6 +313,8 @@ function diffAndPatchChildren(
     else if (newChild.type === oldChild.type) oldChild.diffAndPatch(newChild);
     // child is replaced
     else {
+      console.log("child is replaced", { oldChild, newChild });
+
       oldChild.removeFromDOM();
       insertNewItem(newChild);
     }
@@ -326,6 +328,261 @@ function diffAndPatchChildren(
 
     const [parent, nextSibling] = getParentAndNextSibling(newItems[0]);
     parent.insertBefore(documentFragment, nextSibling);
+  }
+}
+
+class VNode {}
+
+interface VNodeInterface {
+  toString(): string;
+  asNode(): Node;
+  parent: VNodeInterface | null;
+  children: Array<VNodeInterface | never>;
+  type: string;
+  node?: ChildNode;
+  removeFromDOM(): void;
+  diffAndPatch(newNode: VNodeInterface): void;
+}
+
+class ElementVNode extends VNode implements VNodeInterface {
+  type = "Element";
+  node = null as any;
+  children: VNodeInterface[];
+  parent: VNodeInterface = null as any;
+
+  constructor(
+    private tag: string,
+    private props: Record<string, any>,
+    children: VNodeInterface[]
+  ) {
+    super();
+    this.children = children.map((child) => {
+      if (Array.isArray(child)) return new FragmentVNode(child);
+      if (child instanceof VNode) {
+        return child;
+      }
+      if (child instanceof Node) {
+        return new LiveNodeVNode(child);
+      }
+      if (!truthy(child)) {
+        return new NullVNode();
+      }
+
+      return new TextVNode(child);
+    });
+    this.children.forEach((child) => (child.parent = this));
+  }
+  toString() {
+    return asHtmlString(this.tag, this.props, this.children);
+  }
+  asNode() {
+    const node = asNode(this.tag, this.props, this.children)[0];
+    this.node = node;
+    return node;
+  }
+  removeFromDOM() {
+    this.node.parentElement.removeChild(this.node);
+  }
+  diffAndPatch(newNode: ElementVNode) {
+    if (newNode.tag === this.tag) {
+      newNode.node = this.node;
+      //      patch props,
+      // update props form new node
+      Object.entries(newNode.props)
+        .filter(([k, v]) => this.props[k] !== v)
+        .forEach(([key, value]) => {
+          if (value === true) newNode.node.setAttribute(key, "");
+          else if (value === null || value === undefined || value === false)
+            newNode.node.removeAttribute(key);
+          else newNode.node.setAttribute(key, value);
+        });
+
+      // remove old, obsolate attributes
+      Object.entries(this.props)
+        .filter(([k, v]) => !newNode.props.hasOwnProperty(k))
+        .forEach(([key, value]) => {
+          this.node.removeAttribute(key);
+        });
+
+      // children => iter and patch
+      // old children being modified
+      diffAndPatchChildren(this, newNode);
+    }
+    // tag has changed
+    else {
+      this.node.replaceWith(newNode.asNode());
+    }
+  }
+}
+
+class FragmentVNode extends VNode implements VNodeInterface {
+  type = "Fragment";
+  children: VNodeInterface[];
+
+  constructor(
+    children: Array<
+      VNodeInterface | ChildNode | string | boolean | null | undefined | number
+    >
+  ) {
+    super();
+
+    this.children = children.map((child) => {
+      if (Array.isArray(child)) return new FragmentVNode(child);
+      if (child instanceof VNode) return child;
+      if (child instanceof Node) return new LiveNodeVNode(child);
+      if (!truthy(child)) return new NullVNode();
+      return new TextVNode(child as string | number);
+    });
+
+    this.children.forEach((child) => (child.parent = this));
+  }
+
+  asNode() {
+    const node = asNode(undefined, {}, this.children)[0];
+    console.log({ node });
+
+    return node;
+  }
+
+  toString() {
+    return this.children.map((child) => child.toString()).join("");
+  }
+
+  // to level
+  diffAndPatch(newVNode: FragmentVNode) {
+    return diffAndPatchChildren(this, newVNode);
+  }
+
+  removeFromDOM() {
+    this.children.forEach((child) => child.removeFromDOM());
+  }
+}
+
+class TextVNode extends VNode implements VNodeInterface {
+  type = "TextNode";
+  children = [];
+  node: Text = null as any;
+  props: { content: any };
+  parent: VNodeInterface = null as any;
+
+  /**
+   *
+   */
+  constructor(content: string | number | boolean) {
+    super();
+    this.props = { content }; //@TODO:
+  }
+
+  asNode() {
+    const textNode = document.createTextNode(this.props.content);
+    this.node = textNode;
+    return textNode;
+  }
+
+  toString() {
+    return sanitize(this.props.content);
+  }
+
+  diffAndPatch(newNode: TextVNode) {
+    this.node.nodeValue = newNode.props.content;
+    newNode.node = this.node;
+  }
+
+  removeFromDOM() {
+    this.node.parentElement!.removeChild(this.node);
+  }
+}
+
+class NullVNode extends VNode implements VNodeInterface {
+  type = "Null";
+  children = [];
+  parent: VNodeInterface = null as any;
+  /**
+   *
+   */
+  constructor() {
+    super();
+  }
+
+  asNode() {
+    //return null; // return empty fragment?
+    return document.createDocumentFragment();
+  }
+
+  diffAndPatch(newNode2: NullVNode) {
+    return;
+  }
+
+  removeFromDOM() {
+    return;
+  }
+
+  toString() {
+    return "";
+  }
+}
+
+class LiveNodeVNode extends VNode implements VNodeInterface {
+  type = "Node";
+  children = [];
+  parent: VNodeInterface = null as any;
+  node: ChildNode;
+
+  /**
+   *
+   */
+  constructor(node: ChildNode) {
+    super();
+    this.node = node;
+  }
+
+  asNode() {
+    return this.node;
+  }
+
+  diffAndPatch(newNode: LiveNodeVNode) {
+    if (newNode.node !== this.node) {
+      this.node.replaceWith(newNode.node);
+    }
+  }
+
+  removeFromDOM() {
+    this.node.parentElement!.removeChild(this.node);
+  }
+
+  toString() {
+    return getOuterHtml(this.node);
+  }
+}
+
+class RootVNode extends VNode implements VNodeInterface {
+  type = "Root";
+  parent = null;
+  node: Element;
+  children: VNodeInterface[];
+  /**
+   *
+   */
+  constructor(content, domNode: Element) {
+    super();
+    content.parent = this;
+    this.children = [content];
+    this.node = domNode;
+  }
+
+  asNode() {
+    return this.children[0].asNode();
+  }
+  toString() {
+    return this.children[0].toString();
+  }
+
+  diffAndPatch(newVNode: VNodeInterface) {
+    diffAndPatchChildren(this, newVNode);
+  }
+
+  removeFromDOM() {
+    this.node.remove();
   }
 }
 
@@ -466,16 +723,55 @@ export function render(
   }
 }
 
-export function rawHtml(content: string): JsxNodeInterface {
-  return new (class extends JsxNode implements JsxNodeInterface {
+export function rawHtml(content: string): VNodeInterface {
+  return new (class extends VNode implements VNodeInterface {
+    parent: VNodeInterface = null as any;
+    children = [];
+    type = "RawHtml";
+    childNodes: ChildNode[];
+    content: string;
+    node?: ChildNode;
+
+    /**
+     *
+     */
+    constructor(content: string) {
+      super();
+      this.content = content;
+    }
+    removeFromDOM() {
+      console.log("remove from dom rawHtml");
+
+      this.childNodes.forEach((node) => node.parentElement!.removeChild(node));
+    }
+    diffAndPatch(newNode: VNodeInterface) {
+      console.log("LiveNode diffAndPatch");
+
+      if ((newNode.content = this.content)) {
+        newNode.node = this.node;
+        newNode.childNodes = this.childNodes;
+        return;
+      }
+      this.removeFromDOM();
+      insertNewItem(newNode);
+    }
+
     toString() {
       return content;
     }
 
     asNode() {
       const template = document.createElement("template");
-      template.innerHTML = content;
-      return template.content;
+      template.innerHTML = this.content;
+      const documentFragment = template.content;
+      this.childNodes = Array.from(documentFragment.childNodes);
+
+      // basically the `.node` property is used to determine the last html node of the VNode,
+      // to position the next VNode's DOM Node after it.
+      // therefore .node returns the last node of the raw html
+      if (this.childNodes.length)
+        this.node = this.childNodes[this.childNodes.length - 1]
+      return documentFragment;
     }
     asVNode() {
       return {};
@@ -484,287 +780,11 @@ export function rawHtml(content: string): JsxNodeInterface {
     [_callRefs]() {
       // noop
     }
-  })({} as JsxProps);
+  })(content);
 }
-
-// vTree
 
 // gotchsas:
 // - styles will override (could do: setting each rule individually)
-
-interface VNodeInterface {
-  toString(): string;
-  asNode(): Node;
-  parent: VNodeInterface | null;
-  children: Array<VNodeInterface | never>;
-  type: string;
-  node?: ChildNode;
-  removeFromDOM(): void;
-  diffAndPatch(newNode: VNodeInterface): void;
-}
-
-class ElementVNode extends VNode implements VNodeInterface {
-  type = "Element";
-  node = null as any;
-  children: VNodeInterface[];
-  parent: VNodeInterface = null as any;
-
-  constructor(
-    private tag: string,
-    private props: Record<string, any>,
-    children: VNodeInterface[]
-  ) {
-    super();
-    this.children = children.map((child) => {
-      if (Array.isArray(child)) return new FragmentVNode(child);
-      if (child instanceof VNode) {
-        return childVNode;
-      }
-      if (child instanceof Node) {
-        return new LiveNodeVNode(child);
-      }
-      if (!truthy(child)) {
-        return new NullVNode();
-      }
-
-      return new TextVNode(child);
-    });
-    this.children.forEach((child) => (child.parent = this));
-  }
-  toString() {
-    return asHtmlString(this.tag, this.props, this.children);
-  }
-  asNode() {
-    const node = asNode(this.tag, this.props, this.children)[0];
-    this.node = node;
-    return node;
-  }
-  removeFromDOM() {
-    this.node.parentElement.removeChild(this.node);
-  }
-  diffAndPatch(newNode: ElementVNode) {
-    if (newNode.tag === this.tag) {
-      newNode.node = this.node;
-      //      patch props,
-      // update props form new node
-      Object.entries(newNode.props)
-        .filter(([k, v]) => this.props[k] !== v)
-        .forEach(([key, value]) => {
-          if (value === true) newNode.node.setAttribute(key, "");
-          else if (value === null || value === undefined || value === false)
-            newNode.node.removeAttribute(key);
-          else newNode.node.setAttribute(key, value);
-        });
-
-      // remove old, obsolate attributes
-      Object.entries(this.props)
-        .filter(([k, v]) => !newNode.props.hasOwnProperty(k))
-        .forEach(([key, value]) => {
-          this.node.removeAttribute(key);
-        });
-
-      // children => iter and patch
-      // old children being modified
-      diffAndPatchChildren(this, newNode);
-    }
-    // tag has changed
-    else {
-      this.node.replaceWith(newNode.asNode());
-    }
-  }
-}
-
-class FragmentVNode extends VNode implements VNodeInterface {
-  type = "Fragment";
-
-  constructor(
-    children: Array<
-      VNodeInterface | ChildNode | string | boolean | null | undefined | number
-    >
-  ) {
-    super();
-
-    this.children = children.map((child) => {
-      if (Array.isArray(child)) return new FragmentVNode(child);
-      if (child instanceof VNode) {
-        const childVNode = child; //child.asVNode();
-        childVNode.parent = this;
-        return childVNode;
-      }
-      if (child instanceof Node) {
-        const n = new LiveNodeVNode(child);
-        n.parent = this;
-        return n;
-      }
-
-      console.log("@@ map 2", { child });
-
-      if (!truthy(child)) {
-        const childVNode = new NullVNode();
-        childVNode.parent = this;
-        return childVNode;
-      }
-
-      console.log(":::", { child });
-
-      const textVNode = new TextVNode(child);
-      textVNode.parent = this;
-      return textVNode;
-    });
-  }
-
-  asNode() {
-    const node = asNode(undefined, {}, this.children)[0];
-    console.log({ node });
-
-    return node;
-  }
-
-  toString() {
-    return this.children.map((child) => child.toString()).join("");
-  }
-
-  // to level
-  diffAndPatch(newVNode: FragmentVNode) {
-    console.log("diffAndPatch");
-
-    return diffAndPatchChildren(this, newVNode);
-  }
-
-  removeFromDOM() {
-    getChildrenWithNodes(this).forEach((node) =>
-      node.node!.parentElement!.removeChild(node.node!)
-    );
-  }
-}
-
-class TextVNode extends VNode implements VNodeInterface {
-  type = "TextNode";
-  children = [];
-  node: Text = null as any;
-  props: { content: any };
-  parent: VNodeInterface = null as any;
-
-  /**
-   *
-   */
-  constructor(content: string | number | boolean) {
-    super();
-    this.props = { content }; //@TODO:
-  }
-
-  asNode() {
-    const textNode = document.createTextNode(this.props.content);
-    this.node = textNode;
-    return textNode;
-  }
-
-  toString() {
-    return sanitize(this.props.content);
-  }
-
-  diffAndPatch(newNode: TextVNode) {
-    this.node.nodeValue = newNode.props.content;
-    newNode.node = this.node;
-  }
-
-  removeFromDOM() {
-    this.node.parentElement!.removeChild(this.node);
-  }
-}
-
-class NullVNode extends VNode implements VNodeInterface {
-  type = "Null";
-  children = [];
-  parent: VNodeInterface = null as any;
-  /**
-   *
-   */
-  constructor() {
-    super();
-  }
-
-  asNode() {
-    //return null; // return empty fragment?
-    return document.createDocumentFragment();
-  }
-
-  diffAndPatch(newNode2: NullVNode) {
-    return;
-  }
-
-  removeFromDOM() {
-    return;
-  }
-
-  toString() {
-    return "";
-  }
-}
-
-class LiveNodeVNode extends VNode implements VNodeInterface {
-  type = "Node";
-  children = [];
-  parent: VNodeInterface = null as any;
-  node: ChildNode;
-
-  /**
-   *
-   */
-  constructor(node: ChildNode) {
-    super();
-    this.node = node;
-  }
-
-  asNode() {
-    return this.node;
-  }
-
-  diffAndPatch(newNode: LiveNodeVNode) {
-    if (newNode.node !== this.node) {
-      this.node.replaceWith(newNode.node);
-    }
-  }
-
-  removeFromDOM() {
-    this.node.parentElement!.removeChild(this.node);
-  }
-
-  toString() {
-    return getOuterHtml(this.node);
-  }
-}
-
-class RootVNode extends VNode implements VNodeInterface {
-  type = "Root";
-  parent = null;
-  node: Element;
-  children: VNodeInterface[];
-  /**
-   *
-   */
-  constructor(content, domNode: Element) {
-    super();
-    content.parent = this;
-    this.children = [content];
-    this.node = domNode;
-  }
-
-  asNode() {
-    return this.children[0].asNode();
-  }
-  toString() {
-    return this.children[0].toString();
-  }
-
-  diffAndPatch(newVNode: VNodeInterface) {
-    diffAndPatchChildren(this, newVNode);
-  }
-
-  removeFromDOM() {
-    this.node.remove();
-  }
-}
 
 // @TODO: ref calls
 // @TODO: re-render sub trees (.node = add to map)

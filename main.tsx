@@ -338,6 +338,22 @@ function markup(num: any) {
   );
 }
 
+function markup5(num: any) {
+  return num === 1 ? (
+    <div>
+      {rawHtml(`<div class="k">txt</div><input type=radio" />`)}
+      <Comp3 />
+      {el}
+    </div>
+  ) : (
+    <div>
+      {rawHtml(`<div class="k">txt</div><input type=radio" />`)}
+      {null}
+      {el}
+    </div>
+  );
+}
+
 //console.log(markup);
 //window.markup = markup;
 
@@ -371,6 +387,7 @@ const el = document.querySelector("#old");
 function Comp2() {
   return (
     <>
+      {rawHtml(`<div class="k">txt</div><input type=radio" />`)}
       <Comp3 />
       {el}
     </>
@@ -398,3 +415,8 @@ window.ss2 = () => {
 
   //document.getElementById("container").innerHTML = markup3(1);
 };
+
+window.reRender5a = () =>
+  render(markup5(1), document.getElementById("container"));
+window.reRender5b = () =>
+  render(markup5(2), document.getElementById("container"));
