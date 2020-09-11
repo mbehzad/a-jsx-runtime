@@ -367,7 +367,7 @@ customElements.define("popup-info", PopUpInfo);
 //document.getElementById("inner")?.setAttribute("data-foo", "mod");
 //render(markup(2), document.body);
 //render(markup, document.body, true);
-const el = document.querySelector("#old")
+const el = document.querySelector("#old");
 function Comp2() {
   return (
     <>
@@ -392,4 +392,9 @@ window.reRender3 = () =>
   );
 
 console.log("12345");
+window.ss = () => markup3(1) + "";
+window.ss2 = () => {
+  console.log(markup3(1));
 
+  //document.getElementById("container").innerHTML = markup3(1);
+};

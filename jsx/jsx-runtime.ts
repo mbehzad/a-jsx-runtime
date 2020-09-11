@@ -143,20 +143,8 @@ function getOuterHtml(element: Node): string {
  * @param tag {string|Function} - tag argument of the jsx call
  * @param props {Object} - props argument of jsx call
  */
-function asHtmlString(tag: string | Function, props: JsxProps) {
-  if (typeof tag === "function") {
-    // expecting tag function to always return a jsx.
-    // here it will also work if it returns something with toString() => string method
-    const element: JsxNode = tag(props);
-
-    return element.toString();
-  }
-
-  // remove children from props and render it as content,
-  // the rest as attributes
-  const { children, ...attrs } = props;
-
-  const attributes = Object.entries(attrs)
+function asHtmlString(tag: string | Function, props: JsxProps, children) {
+  const attributes = Object.entries(props)
     .filter(([, value]) => truthy(value))
     .map(([key, value]) => {
       // e.g. disabled: true => <tag disabled>
@@ -179,16 +167,7 @@ function asHtmlString(tag: string | Function, props: JsxProps) {
     })
     .join(" ");
 
-  const content = children
-    .filter(truthy)
-    .map((child) =>
-      child instanceof Node
-        ? getOuterHtml(child)
-        : typeof child === "object"
-        ? child.toString()
-        : sanitize(child)
-    )
-    .join("");
+  const content = children.map((child) => child.toString()).join("");
 
   return `<${tag} ${attributes}>${content}</${tag}>`;
 }
@@ -520,7 +499,6 @@ interface VNodeInterface {
   children: Array<VNodeInterface | never>;
   type: string;
   node?: ChildNode;
-  getChildrenWithNodes(alwaysAllow: VNode[]): VNode[];
   removeFromDOM(): void;
   diffAndPatch(newNode: VNodeInterface): void;
 }
@@ -537,51 +515,29 @@ class ElementVNode extends VNode implements VNodeInterface {
     children: VNodeInterface[]
   ) {
     super();
-    this.children = children.flat().map((child) => {
-      if (!child) console.log("child nullish", { child, vNode: this });
+    this.children = children.map((child) => {
+      if (Array.isArray(child)) return new FragmentVNode(child);
       if (child instanceof VNode) {
-        const childVNode = child; //child.asVNode();
-        childVNode.parent = this;
         return childVNode;
       }
       if (child instanceof Node) {
-        const n = new LiveNodeVNode(child);
-        n.parent = this;
-        return n;
+        return new LiveNodeVNode(child);
       }
-
-      console.log("@@ map 3", { child });
-
       if (!truthy(child)) {
-        const childVNode = new NullVNode();
-        childVNode.parent = this;
-
-        return childVNode;
+        return new NullVNode();
       }
 
-      const n = new TextVNode(child);
-      n.parent = this;
-      return n;
+      return new TextVNode(child);
     });
+    this.children.forEach((child) => (child.parent = this));
   }
   toString() {
-    return "?";
+    return asHtmlString(this.tag, this.props, this.children);
   }
   asNode() {
     const node = asNode(this.tag, this.props, this.children)[0];
     this.node = node;
     return node;
-  }
-  // @TODO: doesn't need to be in VNode,
-  // basically only the check if it has .node or itter over children (are VNodes! not Nodes)
-  getChildrenWithNodes(alwaysAllow: VNode[]) {
-    return this.children
-      .map((childNode: VNode) => {
-        if (alwaysAllow.includes(childNode)) return childNode;
-        return childNode.node || childNode.getChildrenWithNodes();
-      })
-      .flat(Infinity)
-      .filter(Boolean) as VNode[];
   }
   removeFromDOM() {
     this.node.parentElement.removeChild(this.node);
@@ -620,7 +576,6 @@ class ElementVNode extends VNode implements VNodeInterface {
 
 class FragmentVNode extends VNode implements VNodeInterface {
   type = "Fragment";
-  // parent? @TODO: where will parent be asigned?
 
   constructor(
     children: Array<
@@ -628,7 +583,9 @@ class FragmentVNode extends VNode implements VNodeInterface {
     >
   ) {
     super();
-    this.children = children.flat().map((child) => {
+
+    this.children = children.map((child) => {
+      if (Array.isArray(child)) return new FragmentVNode(child);
       if (child instanceof VNode) {
         const childVNode = child; //child.asVNode();
         childVNode.parent = this;
@@ -662,6 +619,11 @@ class FragmentVNode extends VNode implements VNodeInterface {
 
     return node;
   }
+
+  toString() {
+    return this.children.map((child) => child.toString()).join("");
+  }
+
   // to level
   diffAndPatch(newVNode: FragmentVNode) {
     console.log("diffAndPatch");
@@ -695,6 +657,10 @@ class TextVNode extends VNode implements VNodeInterface {
     const textNode = document.createTextNode(this.props.content);
     this.node = textNode;
     return textNode;
+  }
+
+  toString() {
+    return sanitize(this.props.content);
   }
 
   diffAndPatch(newNode: TextVNode) {
