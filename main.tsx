@@ -226,7 +226,6 @@ function NL() {
 function markup3(num: any) {
   return num === 1 ? (
     <h1>
-      <NL />
       A-Line 1 - {num}
       <Span mode={num} />
       <Button
@@ -368,11 +367,12 @@ customElements.define("popup-info", PopUpInfo);
 //document.getElementById("inner")?.setAttribute("data-foo", "mod");
 //render(markup(2), document.body);
 //render(markup, document.body, true);
+const el = document.querySelector("#old")
 function Comp2() {
   return (
     <>
       <Comp3 />
-      {document.querySelector("#old")}
+      {el}
     </>
   );
 }
@@ -392,3 +392,4 @@ window.reRender3 = () =>
   );
 
 console.log("12345");
+
