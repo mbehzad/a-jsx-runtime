@@ -46,8 +46,6 @@ class JsxNode {
 
 // null when checking the parent when root is fragment itself
 function getParentElementNode(vNode: VNodeInterface): ElementVNode {
-  console.log("getParentElementNode", vNode);
-
   while (vNode.parent) {
     vNode = vNode.parent;
     // `.node` is only on "Text" and "Element", "RawHtml" type VNode, and only Element has children
@@ -75,8 +73,6 @@ function getParentAndNextSibling(vNode: VNodeInterface): [Node, Node | null] {
   // node ancestor with Element,
   const parentWithElement = getParentElementNode(vNode);
   const siblings = getChildrenWithNodes(parentWithElement, vNode);
-  console.log("siblings", siblings);
-
   const prevSibling = siblings[siblings.indexOf(vNode) - 1];
   const nextSiblingNode = prevSibling ? prevSibling.node!.nextSibling : null;
 
@@ -180,8 +176,6 @@ function asNode(
   props: Attributes & SpecialAttributes, //JsxProps,
   children: any[]
 ): [Node, JsxNodeInterface[]] {
-  console.log("asNode()", { tag, props, children });
-
   // fragment
   if (!tag) {
     const fragments = children
@@ -194,7 +188,7 @@ function asNode(
     return [documentFragment, []];
   }
 
-  // shouldn't
+  // shouldn't // @TODO: test and remove
   if (typeof tag === "function") {
     console.error("shouldn't reach this in vTree mode");
     // expecting the tag function to return jsx.
@@ -225,8 +219,6 @@ function asNode(
     return [result, jsxNodes];
   }
 
-  console.log("asNode", { props });
-
   const { ref, ...attrs } = props;
 
   // remember if the svg context was set for this node, and replace after generating all children
@@ -246,8 +238,6 @@ function asNode(
 
   // currently only supporting ref on html elements. not template functions
   if (typeof ref === "function") {
-    console.log("push to refs");
-
     refsToCall.push(() => ref(node));
   }
 
@@ -288,8 +278,6 @@ function asNode(
   // returns child jsx nodes as well to be used during the ref call
   const childJsxNodes = children.filter((child) => child instanceof VNode);
 
-  console.log({ children });
-
   node.append(
     ...children
       //.flat()
@@ -304,7 +292,6 @@ function asNode(
 
 function insertNewItem(newNode: VNodeInterface) {
   const [parent, nextSibling] = getParentAndNextSibling(newNode);
-  console.log("insertNewItem", { newNode, parent, nextSibling });
   parent.insertBefore(newNode.asNode(), nextSibling);
 }
 
@@ -320,8 +307,6 @@ function diffAndPatchChildren(
     else if (newChild.type === oldChild.type) oldChild.diffAndPatch(newChild);
     // child is replaced
     else {
-      console.log("child is replaced", { oldChild, newChild });
-
       oldChild.removeFromDOM();
       insertNewItem(newChild);
     }
@@ -353,7 +338,7 @@ interface VNodeInterface {
 
 class ElementVNode extends VNode implements VNodeInterface {
   type = "Element";
-  node = null as any;
+  node: HTMLElement = null as any;
   children: VNodeInterface[];
   parent: VNodeInterface = null as any;
 
@@ -385,6 +370,10 @@ class ElementVNode extends VNode implements VNodeInterface {
   asNode() {
     const node = asNode(this.tag, this.props, this.children)[0];
     this.node = node;
+
+    // memorize for next subtree re-renders
+    renderedVTrees.set(node, this);
+
     return node;
   }
   removeFromDOM() {
@@ -419,6 +408,9 @@ class ElementVNode extends VNode implements VNodeInterface {
     else {
       this.node.replaceWith(newNode.asNode());
     }
+
+    // memorize for next subtree re-renders
+    renderedVTrees.set(this.node, newNode);
   }
 }
 
@@ -446,7 +438,6 @@ class FragmentVNode extends VNode implements VNodeInterface {
 
   asNode() {
     const node = asNode(undefined, {}, this.children)[0];
-    console.log({ node });
 
     return node;
   }
@@ -570,7 +561,7 @@ class RootVNode extends VNode implements VNodeInterface {
   /**
    *
    */
-  constructor(content, domNode: Element) {
+  constructor(content: VNodeInterface, domNode: Element) {
     super();
     content.parent = this;
     this.children = [content];
@@ -601,17 +592,10 @@ function asVNode(
 
   if (typeof tag === "function") {
     let result = tag(props);
-    if (result instanceof VNode) {
-      //console.warn("asVNode with JsxNode");
-      return result;
-    }
-    if (result instanceof Node) {
-      return new LiveNodeVNode(result);
-    }
+    if (result instanceof VNode) return result;
+    if (result instanceof Node) return new LiveNodeVNode(result);
     // null jsx node
-    if (!truthy(result)) {
-      return new NullVNode();
-    }
+    if (!truthy(result)) return new NullVNode();
 
     return new TextVNode(result);
   }
@@ -641,13 +625,6 @@ export function jsxs(
   tag: string | Function,
   props: JsxProps
 ): JsxNodeInterface {
-  props.children = props.children.flat(); // @TODO: doc
-
-  // if ref prop is provided, memorize and remove from the html generation process
-  /*const ref: Function | null =
-    typeof props.ref === "function" ? props.ref : null;
-  if (ref) delete props.ref; // @TODO:*/
-
   return asVNode(tag, props);
 }
 
@@ -701,7 +678,7 @@ export function render(
 
     const vTree = new RootVNode(markup, domNode);
 
-    console.log("###########\n", "vTree:", vTree);
+    console.log("#################################\n", "vTree:", vTree);
 
     if (isReRender) {
       console.log("is re-render");
@@ -709,8 +686,17 @@ export function render(
 
       console.log("###########\n", { oldVTree, newVTree: vTree });
 
-      // diff
-      oldVTree.diffAndPatch(vTree);
+      // was previously renderd as a subtree from another render
+      if (oldVTree.type === "Element") {
+        // update its children
+        diffAndPatchChildren(oldVTree, vTree);
+        // update the children property in the memory reference from the previous render,
+        // attributes, etc will stay the same
+        oldVTree.children = vTree.children;
+      } else {
+        // diff
+        oldVTree.diffAndPatch(vTree);
+      }
 
       renderedVTrees.set(domNode, vTree);
     } else {
@@ -724,8 +710,6 @@ export function render(
       // remove first from list, and invoke it
       refsToCall.splice(0, 1)[0]();
     }
-
-    ////markup[_callRefs]();
   } else {
     throw new Error("render method called with wrong argument(s)");
   }
@@ -790,6 +774,4 @@ export function rawHtml(content: string): VNodeInterface {
 
 // gotchsas:
 // - styles will override (could do: setting each rule individually)
-
-// @TODO: ref calls
-// @TODO: re-render sub trees (.node = add to map)
+// @TODO: event props

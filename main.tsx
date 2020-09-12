@@ -354,6 +354,18 @@ function markup5(num: any) {
   );
 }
 
+function markup6() {
+
+  return  (
+    <div>
+      <div id="foo6">
+        <span>original</span>
+      </div>
+      <button>submit</button>
+    </div>
+  )  ;
+}
+
 //console.log(markup);
 //window.markup = markup;
 
@@ -425,3 +437,7 @@ window.reRender5b = () =>
 
   render((<h2 class="a"  ref={console.warn}>Heading with ref</h2>), document.getElementById("container"));
   window.reRenderRef = () => render((<h2 class="a"  ref={console.warn}>Heading with ref</h2>), document.getElementById("container"));
+  window.reRender6a = () => render(markup6(), document.getElementById("container"));
+  window.reRender6b = () => render((<p>modified</p>), document.getElementById("foo6"));
+
+
