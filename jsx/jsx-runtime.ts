@@ -1,5 +1,5 @@
 const renderedVTrees = new WeakMap<HTMLElement, RootVNode>();
-const refsToCall: Function[] = [];
+const refsToCall: Array<() => void> = [];
 
 /**
  * provides functions needed by babel for a custom pragma
@@ -225,7 +225,10 @@ function asNode(
     return [result, jsxNodes];
   }
 
-  const { ...attrs } = props;
+  console.log("asNode", { props });
+
+  const { ref, ...attrs } = props;
+
   // remember if the svg context was set for this node, and replace after generating all children
   let svgContextSet = false;
 
@@ -240,6 +243,13 @@ function asNode(
   const node = svgContext
     ? document.createElementNS("http://www.w3.org/2000/svg", tag)
     : document.createElement(tag);
+
+  // currently only supporting ref on html elements. not template functions
+  if (typeof ref === "function") {
+    console.log("push to refs");
+
+    refsToCall.push(() => ref(node));
+  }
 
   Object.entries(attrs)
     .filter(([_key, value]) => truthy(value))
@@ -282,9 +292,7 @@ function asNode(
 
   node.append(
     ...children
-      .flat()
-      //.filter(truthy)
-      .filter((child) => child.tag !== "__NULL__")
+      //.flat()
       .map((child) => child.asNode())
   );
 
@@ -295,9 +303,8 @@ function asNode(
 }
 
 function insertNewItem(newNode: VNodeInterface) {
-
   const [parent, nextSibling] = getParentAndNextSibling(newNode);
-  console.log("insertNewItem", {newNode, parent, nextSibling});
+  console.log("insertNewItem", { newNode, parent, nextSibling });
   parent.insertBefore(newNode.asNode(), nextSibling);
 }
 
@@ -637,9 +644,9 @@ export function jsxs(
   props.children = props.children.flat(); // @TODO: doc
 
   // if ref prop is provided, memorize and remove from the html generation process
-  const ref: Function | null =
+  /*const ref: Function | null =
     typeof props.ref === "function" ? props.ref : null;
-  if (ref) delete props.ref; // @TODO:
+  if (ref) delete props.ref; // @TODO:*/
 
   return asVNode(tag, props);
 }
@@ -682,8 +689,6 @@ export function render(
     (el) => (el.style.background = "#ccffcc")
   );
 
-  refsToCall.splice(0);
-
   const isReRender = renderedVTrees.has(domNode);
   if (!append && !isReRender) domNode.innerHTML = "";
 
@@ -715,7 +720,10 @@ export function render(
 
     renderedVTrees.set(domNode, vTree);
 
-    refsToCall.forEach((cb) => cb());
+    while (refsToCall.length) {
+      // remove first from list, and invoke it
+      refsToCall.splice(0, 1)[0]();
+    }
 
     ////markup[_callRefs]();
   } else {
@@ -740,13 +748,10 @@ export function rawHtml(content: string): VNodeInterface {
       this.content = content;
     }
     removeFromDOM() {
-      console.log("remove from dom rawHtml");
-
       this.childNodes.forEach((node) => node.parentElement!.removeChild(node));
     }
-    diffAndPatch(newNode: VNodeInterface) {
-      console.log("LiveNode diffAndPatch");
 
+    diffAndPatch(newNode: VNodeInterface) {
       if ((newNode.content = this.content)) {
         newNode.node = this.node;
         newNode.childNodes = this.childNodes;
@@ -770,7 +775,7 @@ export function rawHtml(content: string): VNodeInterface {
       // to position the next VNode's DOM Node after it.
       // therefore .node returns the last node of the raw html
       if (this.childNodes.length)
-        this.node = this.childNodes[this.childNodes.length - 1]
+        this.node = this.childNodes[this.childNodes.length - 1];
       return documentFragment;
     }
     asVNode() {

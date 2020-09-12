@@ -265,7 +265,7 @@ function markup3(num: any) {
       {null}
     </h1>
   ) : (
-    <h1 class="a">
+    <h1 class="a"  ref={console.info}>
       B Line 1 - {num}
       <Span mode={num} />
       <Button
@@ -420,3 +420,8 @@ window.reRender5a = () =>
   render(markup5(1), document.getElementById("container"));
 window.reRender5b = () =>
   render(markup5(2), document.getElementById("container"));
+
+
+
+  render((<h2 class="a"  ref={console.warn}>Heading with ref</h2>), document.getElementById("container"));
+  window.reRenderRef = () => render((<h2 class="a"  ref={console.warn}>Heading with ref</h2>), document.getElementById("container"));
