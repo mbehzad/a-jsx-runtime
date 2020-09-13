@@ -354,13 +354,14 @@ function markup5(num: any) {
   );
 }
 
-function markup6() {
+function markup6(a) {
 
   return  (
     <div>
-      <div id="foo6">
-        <span>original</span>
-      </div>
+
+      <svg id="foo6" viewBox="0 0 10 10" x="200" width="100">
+            {a && <circle cx="5" cy="5" r="6" />}
+          </svg>
       <button>submit</button>
     </div>
   )  ;
@@ -409,15 +410,17 @@ function Comp3() {
   return <div>comp content</div>;
 }
 
+const $container = document.getElementById("container")
+
 window.reRender1 = () =>
-  render(markup3(1), document.getElementById("container"));
+  render(markup3(1),$container);
 window.reRender2 = () =>
-  render(markup3(2), document.getElementById("container"));
+  render(markup3(2),$container);
 window.reRender3 = () =>
   render(
     // <div>txt</div>
     <Comp2 />,
-    document.getElementById("container")
+   $container
   );
 
 console.log("12345");
@@ -429,15 +432,30 @@ window.ss2 = () => {
 };
 
 window.reRender5a = () =>
-  render(markup5(1), document.getElementById("container"));
+  render(markup5(1),$container);
 window.reRender5b = () =>
-  render(markup5(2), document.getElementById("container"));
+  render(markup5(2),$container);
 
 
 
-  render((<h2 class="a"  ref={console.warn}>Heading with ref</h2>), document.getElementById("container"));
-  window.reRenderRef = () => render((<h2 class="a"  ref={console.warn}>Heading with ref</h2>), document.getElementById("container"));
-  window.reRender6a = () => render(markup6(), document.getElementById("container"));
-  window.reRender6b = () => render((<p>modified</p>), document.getElementById("foo6"));
+  render((
+  <h2 class="a" ref={console.warn}>
+    <>
+      <h1>
+        heading
+      </h1>
+      <svg viewBox="0 0 10 10" x="200" width="100">
+        <circle cx="5" cy="5" r="6" />
+      </svg>
+    </>
+  </h2>
+  ),$container);
+
+
+  window.reRenderRef = () => render((<h2 class="a"  ref={console.warn}>Heading with ref</h2>),$container);
+  window.reRender6a = () => render(markup6(),$container);
+  window.reRender6b = () => render((<circle cx="5" cy="5" r="6" />), document.getElementById("foo6"));
+  window.reRenderSvg = () => render(markup1(),$container);
+  window.reRenderSvg2 = () => render(markup1(),$container);
 
 

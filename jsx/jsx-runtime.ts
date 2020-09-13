@@ -79,18 +79,11 @@ function getParentAndNextSibling(vNode: VNodeInterface): [Node, Node | null] {
   return [parentWithElement.node, nextSiblingNode];
 }
 
-// private key for calling the `ref` callers
-const _callRefs = Symbol("callRefs");
-
-// the current markup which is rendered is nested in an svg element
-let svgContext = false;
-
 // jsx and Fragment will return objects which implement this interface
 export interface JsxNodeInterface extends JsxNode {
   toString(): string;
   asNode(): Node;
   asVNode(): VNode;
-  [_callRefs](): void;
 }
 
 /**
@@ -174,7 +167,8 @@ function asHtmlString(tag: string | Function, props: JsxProps, children) {
 function asNode(
   tag: string | Function | undefined,
   props: Attributes & SpecialAttributes, //JsxProps,
-  children: any[]
+  children: any[],
+  svgContext = false
 ): [Node, JsxNodeInterface[]] {
   // fragment
   if (!tag) {
@@ -188,48 +182,9 @@ function asNode(
     return [documentFragment, []];
   }
 
-  // shouldn't // @TODO: test and remove
-  if (typeof tag === "function") {
-    console.error("shouldn't reach this in vTree mode");
-    // expecting the tag function to return jsx.
-    // here it will also work when it returns HTMLElement
-    let result = tag(props);
-
-    let jsxNodes: JsxNodeInterface[] = [];
-
-    if (result instanceof VNode) {
-      jsxNodes = [result as JsxNodeInterface];
-      result = (result as JsxNodeInterface).asNode();
-      Object.entries(props).forEach(([key, value]) => {
-        if (
-          key.startsWith("on-") &&
-          (typeof value === "function" || typeof value === "object")
-        ) {
-          // remove leading "on-""
-          const event = key.replace(/^on-/, "");
-
-          result.addEventListener(
-            event,
-            value as EventListenerOrEventListenerObject
-          );
-        }
-      });
-    }
-
-    return [result, jsxNodes];
-  }
-
   const { ref, ...attrs } = props;
 
   // remember if the svg context was set for this node, and replace after generating all children
-  let svgContextSet = false;
-
-  // set the context of markup which is rendered as SVG (or its children)
-  // no need for re-setting the context for nested SVGs
-  if (!svgContext && tag === "svg") {
-    svgContext = true;
-    svgContextSet = true;
-  }
 
   // currently not supporting the `is` option for Customized built-in elements
   const node = svgContext
@@ -284,9 +239,6 @@ function asNode(
       .map((child) => child.asNode())
   );
 
-  // svg element and all its children were rendered, reset the svg context
-  if (svgContextSet) svgContext = false;
-
   return [node, childJsxNodes as JsxNodeInterface[]];
 }
 
@@ -338,27 +290,32 @@ interface VNodeInterface {
 
 class ElementVNode extends VNode implements VNodeInterface {
   type = "Element";
+  tag: string;
+  props: Object; // @TODO:
   node: HTMLElement = null as any;
   children: VNodeInterface[];
   parent: VNodeInterface = null as any;
+  svgContext: boolean = false; // will be set to true when element is an SVG Element
 
-  constructor(
-    private tag: string,
-    private props: Record<string, any>,
-    children: VNodeInterface[]
-  ) {
+  constructor({
+    tag,
+    props,
+    children,
+
+  }: {
+    tag: string;
+    props: Record<string, any>;
+    children: Array<VNodeInterface | VNodeInterface[]>;
+  }) {
     super();
+    this.tag = tag;
+    this.props = props;
+
     this.children = children.map((child) => {
       if (Array.isArray(child)) return new FragmentVNode(child);
-      if (child instanceof VNode) {
-        return child;
-      }
-      if (child instanceof Node) {
-        return new LiveNodeVNode(child);
-      }
-      if (!truthy(child)) {
-        return new NullVNode();
-      }
+      if (child instanceof VNode) return child;
+      if (child instanceof Node) return new LiveNodeVNode(child);
+      if (!truthy(child)) return new NullVNode();
 
       return new TextVNode(child);
     });
@@ -367,8 +324,27 @@ class ElementVNode extends VNode implements VNodeInterface {
   toString() {
     return asHtmlString(this.tag, this.props, this.children);
   }
+
   asNode() {
-    const node = asNode(this.tag, this.props, this.children)[0];
+    let svgContext = false;
+    let vNode: VNodeInterface = this;
+    while (vNode.parent) {
+      if (vNode.tag === "svg") {
+        svgContext = true;
+        break;
+      }
+      vNode = vNode.parent;
+    }
+
+    this.svgContext = svgContext;
+    console.log("svgContext:", this.tag, svgContext);
+
+    const node = asNode(
+      this.tag,
+      this.props,
+      this.children,
+      this.svgContext
+    )[0];
     this.node = node;
 
     // memorize for next subtree re-renders
@@ -387,6 +363,8 @@ class ElementVNode extends VNode implements VNodeInterface {
       Object.entries(newNode.props)
         .filter(([k, v]) => this.props[k] !== v)
         .forEach(([key, value]) => {
+          // @TODO:
+          if (key === "ref" && typeof value === "function") refsToCall.push(() => value(newNode.node));
           if (value === true) newNode.node.setAttribute(key, "");
           else if (value === null || value === undefined || value === false)
             newNode.node.removeAttribute(key);
@@ -395,8 +373,9 @@ class ElementVNode extends VNode implements VNodeInterface {
 
       // remove old, obsolate attributes
       Object.entries(this.props)
-        .filter(([k, v]) => !newNode.props.hasOwnProperty(k))
+        .filter(([k, _v]) => !newNode.props.hasOwnProperty(k))
         .forEach(([key, value]) => {
+          // @TODO: remove dom props and event listeners
           this.node.removeAttribute(key);
         });
 
@@ -411,6 +390,14 @@ class ElementVNode extends VNode implements VNodeInterface {
 
     // memorize for next subtree re-renders
     renderedVTrees.set(this.node, newNode);
+  }
+
+  static fromExistingElementNode(vNode: ElementVNode, children:  Array<VNodeInterface | VNodeInterface[]>) {
+    const {tag, props, parent, node, svgContext} = vNode;
+    const newVNode = new ElementVNode({tag, props, children});
+    Object.assign(newVNode, {parent, node, svgContext});
+    return newVNode;
+
   }
 }
 
@@ -602,10 +589,10 @@ function asVNode(
 
   const { children, ...attr } = props;
   if (tag) {
-    return new ElementVNode(tag, attr, children); // or simply pass cildren with props
+    return new ElementVNode({ tag, props: attr, children }); // or simply pass cildren with props
   } else if (!truthy(attr)) {
     const vNode = new NullVNode();
-    vNode.parent = this;
+    //vNode.parent = this;
     return vNode;
   } else if (children) {
     return new FragmentVNode(children);
@@ -674,9 +661,7 @@ export function render(
   } else if (markup instanceof Node) {
     domNode.insertAdjacentElement("beforeend", markup);
   } else if (markup instanceof VNode) {
-    svgContext = false;
-
-    const vTree = new RootVNode(markup, domNode);
+    let vTree = new RootVNode(markup, domNode);
 
     console.log("#################################\n", "vTree:", vTree);
 
@@ -686,10 +671,10 @@ export function render(
 
       console.log("###########\n", { oldVTree, newVTree: vTree });
 
-      // was previously renderd as a subtree from another render
+      // was previously rendered as a subtree from another render
       if (oldVTree.type === "Element") {
-        // update its children
-        diffAndPatchChildren(oldVTree, vTree);
+        vTree = ElementVNode.fromExistingElementNode(oldVTree, [markup]);
+        oldVTree.diffAndPatch(vTree);
         // update the children property in the memory reference from the previous render,
         // attributes, etc will stay the same
         oldVTree.children = vTree.children;
@@ -762,16 +747,11 @@ export function rawHtml(content: string): VNodeInterface {
         this.node = this.childNodes[this.childNodes.length - 1];
       return documentFragment;
     }
-    asVNode() {
-      return {};
-    }
-
-    [_callRefs]() {
-      // noop
-    }
   })(content);
 }
 
-// gotchsas:
+// gotchas:
 // - styles will override (could do: setting each rule individually)
-// @TODO: event props
+
+
+window.renderedVTrees = renderedVTrees
