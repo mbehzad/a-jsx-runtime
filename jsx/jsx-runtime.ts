@@ -192,43 +192,13 @@ function asNode(
     : document.createElement(tag);
 
   // currently only supporting ref on html elements. not template functions
+  // ref is only called when element is created. not when the ref property is changed
   if (typeof ref === "function") {
     refsToCall.push(() => ref(node));
   }
 
-  Object.entries(attrs)
-    .filter(([_key, value]) => truthy(value))
-    .forEach(([key, value]) => {
-      // for style as object:
-      // (style:) {display: "none", position: "absolute"} ==> 'display: none; position: absolute;'
-      if (key === "style" && typeof value === "object")
-        value = Object.entries(value)
-          .filter(([, v]) => truthy(v))
-          .map(([k, v]) => `${k}: ${v}`)
-          .join("; ");
-
-      // (class:) ["btn", "red"] ==> "btn red"
-      if (key === "class" && Array.isArray(value)) value = value.join(" ");
-
-      if (value === true) node.setAttribute(key, "");
-      else if (typeof value === "string" || typeof value === "number")
-        node.setAttribute(key, String(value));
-      // key has the form of "on-change". value is the callback function or an object implementing {EventListener} interface
-      else if (
-        key.startsWith("on-") &&
-        (typeof value === "function" || typeof value === "object")
-      ) {
-        // remove leading "on-""
-        const event = key.replace(/^on-/, "");
-
-        node.addEventListener(
-          event,
-          value as EventListenerOrEventListenerObject
-        );
-      }
-      // @ts-ignore - providing the value as property to html element
-      else node[key] = value;
-    });
+  // add attributes, event listeners etc.
+  ElementVNode.addProps(node, attrs);
 
   // returns child jsx nodes as well to be used during the ref call
   const childJsxNodes = children.filter((child) => child instanceof VNode);
@@ -301,7 +271,6 @@ class ElementVNode extends VNode implements VNodeInterface {
     tag,
     props,
     children,
-
   }: {
     tag: string;
     props: Record<string, any>;
@@ -358,26 +327,8 @@ class ElementVNode extends VNode implements VNodeInterface {
   diffAndPatch(newNode: ElementVNode) {
     if (newNode.tag === this.tag) {
       newNode.node = this.node;
-      //      patch props,
-      // update props form new node
-      Object.entries(newNode.props)
-        .filter(([k, v]) => this.props[k] !== v)
-        .forEach(([key, value]) => {
-          // @TODO:
-          if (key === "ref" && typeof value === "function") refsToCall.push(() => value(newNode.node));
-          if (value === true) newNode.node.setAttribute(key, "");
-          else if (value === null || value === undefined || value === false)
-            newNode.node.removeAttribute(key);
-          else newNode.node.setAttribute(key, value);
-        });
-
-      // remove old, obsolate attributes
-      Object.entries(this.props)
-        .filter(([k, _v]) => !newNode.props.hasOwnProperty(k))
-        .forEach(([key, value]) => {
-          // @TODO: remove dom props and event listeners
-          this.node.removeAttribute(key);
-        });
+      // update props and attributes
+      ElementVNode.addProps(newNode.node, newNode.props, this.props);
 
       // children => iter and patch
       // old children being modified
@@ -392,12 +343,75 @@ class ElementVNode extends VNode implements VNodeInterface {
     renderedVTrees.set(this.node, newNode);
   }
 
-  static fromExistingElementNode(vNode: ElementVNode, children:  Array<VNodeInterface | VNodeInterface[]>) {
-    const {tag, props, parent, node, svgContext} = vNode;
-    const newVNode = new ElementVNode({tag, props, children});
-    Object.assign(newVNode, {parent, node, svgContext});
+  static fromExistingElementNode(
+    vNode: ElementVNode,
+    children: Array<VNodeInterface | VNodeInterface[]>
+  ) {
+    const { tag, props, parent, node, svgContext } = vNode;
+    const newVNode = new ElementVNode({ tag, props, children });
+    Object.assign(newVNode, { parent, node, svgContext });
     return newVNode;
+  }
 
+  static addProps(
+    element: Element,
+    newProps: Record<string, any>,
+    oldProps: Record<string, any> = {}
+  ) {
+    // iterate over all modified new and old properties and set/remove/update them
+    Array.from(new Set([...Object.keys(newProps), ...Object.keys(oldProps)]))
+      .map((propName) => ({
+        propName,
+        oldValue: oldProps[propName],
+        newValue: newProps[propName],
+      }))
+      .filter(({ newValue, oldValue }) => newValue !== oldValue)
+      .forEach(({ propName, newValue, oldValue }) => {
+        // for style as object:
+        // (style:) {display: "none", position: "absolute"} ==> 'display: none; position: absolute;'
+        if (propName === "style" && typeof newValue === "object")
+          newValue = Object.entries(newValue)
+            .filter(([, v]) => truthy(v))
+            .map(([k, v]) => `${k}: ${v}`)
+            .join("; ");
+
+        // (class:) ["btn", "red"] ==> "btn red"
+        if (propName === "class" && Array.isArray(newValue))
+          newValue = newValue.join(" ");
+        // props starting with "on-" are event listeners
+        if (
+          propName.startsWith("on-") &&
+          (typeof newValue === "function" ||
+            typeof newValue === "object" ||
+            typeof oldValue === "function" ||
+            typeof oldValue === "object")
+        ) {
+          // remove leading "on-""
+          const event = propName.replace(/^on-/, "");
+
+          if (typeof newValue === "function" || typeof newValue === "object")
+            element.addEventListener(
+              event,
+              newValue as EventListenerOrEventListenerObject
+            );
+
+          if (typeof oldValue === "function" || typeof oldValue === "object")
+            element.removeEventListener(
+              event,
+              oldValue as EventListenerOrEventListenerObject
+            );
+        }
+        // boolean attribute set without value
+        else if (newValue === true) element.setAttribute(propName, "");
+        // remove old attributes which are false now
+        else if (!truthy(newValue)) element.removeAttribute(propName);
+        // update to new value as string
+        else if (typeof newValue === "string" || typeof newValue === "number")
+          element.setAttribute(propName, String(newValue));
+        // key has the form of "on-change". value is the callback function or an object implementing {EventListener} interface
+        // @ts-ignore - providing the value as property to html element
+        else node[propName] = value;
+      });
   }
 }
 
@@ -752,6 +766,11 @@ export function rawHtml(content: string): VNodeInterface {
 
 // gotchas:
 // - styles will override (could do: setting each rule individually)
+// - ref : inline func will be recognized as new function
 
+window.renderedVTrees = renderedVTrees;
 
-window.renderedVTrees = renderedVTrees
+// TEST CASES
+// 1- svg <-> null
+// 2- svg -> child
+// 3- div <-> Func <-> null

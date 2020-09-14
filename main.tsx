@@ -437,11 +437,11 @@ window.reRender5b = () =>
   render(markup5(2),$container);
 
 
-
+window.r = (a) =>
   render((
   <h2 class="a" ref={console.warn}>
     <>
-      <h1>
+      <h1 on-click={a ? console.log : console.warn}>
         heading
       </h1>
       <svg viewBox="0 0 10 10" x="200" width="100">
