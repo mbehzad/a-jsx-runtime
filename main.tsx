@@ -265,7 +265,7 @@ function markup3(num: any) {
       {null}
     </h1>
   ) : (
-    <h1 class="a"  ref={console.info}>
+    <h1 class="a" ref={console.info}>
       B Line 1 - {num}
       <Span mode={num} />
       <Button
@@ -355,16 +355,16 @@ function markup5(num: any) {
 }
 
 function markup6(a) {
-
-  return  (
+  return (
     <div>
-
       <svg id="foo6" viewBox="0 0 10 10" x="200" width="100">
-            {a && <circle cx="5" cy="5" r="6" />}
-          </svg>
+        <>
+          {a && <circle cx="5" cy="5" r="6" />}
+        </>
+      </svg>
       <button>submit</button>
     </div>
-  )  ;
+  );
 }
 
 //console.log(markup);
@@ -410,17 +410,15 @@ function Comp3() {
   return <div>comp content</div>;
 }
 
-const $container = document.getElementById("container")
+const $container = document.getElementById("container");
 
-window.reRender1 = () =>
-  render(markup3(1),$container);
-window.reRender2 = () =>
-  render(markup3(2),$container);
+window.reRender1 = () => render(markup3(1), $container);
+window.reRender2 = () => render(markup3(2), $container);
 window.reRender3 = () =>
   render(
     // <div>txt</div>
     <Comp2 />,
-   $container
+    $container
   );
 
 console.log("12345");
@@ -431,31 +429,38 @@ window.ss2 = () => {
   //document.getElementById("container").innerHTML = markup3(1);
 };
 
-window.reRender5a = () =>
-  render(markup5(1),$container);
-window.reRender5b = () =>
-  render(markup5(2),$container);
+window.reRender5a = () => render(markup5(1), $container);
+window.reRender5b = () => render(markup5(2), $container);
 
+function markup7(mod) {
+  if (mod === 1) {
+    return (
+      <div>
+        <Button>
+          <span>text</span>
+          <span>, more text</span>
+        </Button>
+      </div>
+    );
+  } else if (mod === 2) {
+    return <div>some content</div>;
+  } else {
+    return <div>{false}</div>;
+  }
+}
 
-window.r = (a) =>
-  render((
-  <h2 class="a" ref={console.warn}>
-    <>
-      <h1 on-click={a ? console.log : console.warn}>
-        heading
-      </h1>
-      <svg viewBox="0 0 10 10" x="200" width="100">
-        <circle cx="5" cy="5" r="6" />
-      </svg>
-    </>
-  </h2>
-  ),$container);
-
-
-  window.reRenderRef = () => render((<h2 class="a"  ref={console.warn}>Heading with ref</h2>),$container);
-  window.reRender6a = () => render(markup6(),$container);
-  window.reRender6b = () => render((<circle cx="5" cy="5" r="6" />), document.getElementById("foo6"));
-  window.reRenderSvg = () => render(markup1(),$container);
-  window.reRenderSvg2 = () => render(markup1(),$container);
-
-
+window.reRenderRef = () =>
+  render(
+    <h2 class="a" ref={console.warn}>
+      Heading with ref
+    </h2>,
+    $container
+  );
+window.reRender6a = () => render(markup6(true), $container);
+window.reRender6b = () =>
+  render(<circle cx="5" cy="5" r="6" />, document.getElementById("foo6"));
+window.reRenderSvg = () => render(markup1(), $container);
+window.reRenderSvg2 = () => render(markup1(), $container);
+window.reRender7_1 = () => render(markup7(1), $container);
+window.reRender7_2 = () => render(markup7(2), $container);
+window.reRender7_3 = () => render(markup7(3), $container);
