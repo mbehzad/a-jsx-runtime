@@ -3,7 +3,9 @@
  * to render parsed jsx code to html
  */
 
+// a map between v-trees and rendered DOM nodes / containers
 const renderedVTrees = new WeakMap<Element, RootVNode | ElementVNode>();
+// list of `ref` callbacks to be called after the DOM nodes are rendered
 const refsToCall: Array<() => void> = [];
 
 // props which will be rendered as attributes
@@ -20,7 +22,7 @@ type SpecialAttributes = {
   ref?: Function;
 };
 
-// types of child  which will be passed by the jsx parser plugin
+// types of children which will be passed by the jsx parser plugin
 // nested array in case of
 // <elem>
 //   <span/>
@@ -49,16 +51,27 @@ type ChildrenProps = {
 type JsxProps = Attributes & SpecialAttributes & ChildrenProps;
 
 // null when checking the parent when root is fragment itself
+/**
+ * return the closest ancestor of the given VNode which has an DOM Element (i.e. is not a Fragment)
+ * @param vNode {VNodeInterface}
+ */
 function getParentElementNode(vNode: VNodeInterface): ElementVNode {
   while (vNode.parent) {
     vNode = vNode.parent;
-    // `.node` is only on "Text" and "Element", "RawHtml" type VNode, and only Element has children
     if (vNode.node) break;
   }
 
+  // `.node` is only on "Text" and "Element", "RawHtml" type VNode, and only Element has children
   return (vNode as unknown) as ElementVNode;
 }
 
+/**
+ * for the given v-node all children are traversed till children with DOM nodes are found
+ *
+ * @param {VNodeInterface} vNode - parent node
+ * @param {VNodeInterface} [alwaysAllow] - always contain the provided node in the returned list, even if it is not an element with DOM Node
+ * @returns {VNodeInterface[]}
+ */
 function getChildrenWithNodes(
   vNode: VNodeInterface,
   alwaysAllow?: VNodeInterface
@@ -73,6 +86,14 @@ function getChildrenWithNodes(
     .flat(Infinity) as VNodeInterface[];
 }
 
+/**
+ * returns a tuple of the closest ancestor which has a DOM Node,
+ * and the node which has a DOM node and is rendered as the next sibling for the provided node in the DOM.
+ * Or null when it is the last child itsel
+ *
+ * @param {VNodeInterface} vNode
+ * @returns {([Node, Node | null])}
+ */
 function getParentAndNextSibling(vNode: VNodeInterface): [Node, Node | null] {
   // node ancestor with Element,
   const parentWithElement = getParentElementNode(vNode);
@@ -161,7 +182,7 @@ function asHtmlString(
 }
 
 /**
- * generates HTML Node elements from the provided jsx tree
+ * generates HTML Node elements from the provided jsx item
  * @param tag {string|Function} - tag argument of the jsx call
  * @param props {Object} - props argument of jsx call
  */
@@ -208,11 +229,21 @@ function asNode<T extends Node>(
   return node;
 }
 
+/**
+ * renders the HTML for the given V-Node and adds to the DOM at the correct position
+ * @param newNode - vNode to be rendered as HTML Node and added to DOM
+ */
 function insertNewItem(newNode: VNodeInterface) {
   const [parent, nextSibling] = getParentAndNextSibling(newNode);
   parent.insertBefore(newNode.asNode(), nextSibling);
 }
 
+/**
+ * iterate over all the children of the provided nodes, and each pairwise
+ *
+ * @param {VNodeInterface} oldNode - v-node from the old render
+ * @param {VNodeInterface} newNode- v-node from the new tree which its children have to replace the children of the old node
+ */
 function diffAndPatchChildren(
   oldNode: VNodeInterface,
   newNode: VNodeInterface
@@ -257,6 +288,7 @@ interface VNodeInterface {
   diffAndPatch(newNode: VNodeInterface): void;
 }
 
+// V-Node which will be rendered as HTMLElement or SVGElement
 class ElementVNode extends VNode implements VNodeInterface {
   type = "Element";
   tag: string;
@@ -417,6 +449,7 @@ class ElementVNode extends VNode implements VNodeInterface {
   }
 }
 
+// V-Node for the Fragment element in jsx (`<></>`) or when an array is placed directly in jsx children (e.g. `<elem>{[list]}</elem>`)
 class FragmentVNode extends VNode implements VNodeInterface {
   type = "Fragment";
   children: VNodeInterface[];
@@ -455,6 +488,7 @@ class FragmentVNode extends VNode implements VNodeInterface {
   }
 }
 
+// V-Node for items which be rendered as text (string, number,.. )
 class TextVNode extends VNode implements VNodeInterface {
   type = "TextNode";
   children = [];
@@ -490,6 +524,7 @@ class TextVNode extends VNode implements VNodeInterface {
   }
 }
 
+// V-Node for `null`, `false` or `undefined` in jsx elements
 class NullVNode extends VNode implements VNodeInterface {
   type = "Null";
   children = [];
@@ -519,6 +554,7 @@ class NullVNode extends VNode implements VNodeInterface {
   }
 }
 
+// V-Node when a live HTMLElement was refernced in jsx (e.g. `<div>{document.getElementById("comp")}</div>`)
 class LiveNodeVNode extends VNode implements VNodeInterface {
   type = "Node";
   children = [] as VNodeInterface[];
@@ -552,6 +588,7 @@ class LiveNodeVNode extends VNode implements VNodeInterface {
   }
 }
 
+// wrapper V-Node which references the HTML Node which itself is not rendered by jsx, but its content.
 class RootVNode extends VNode implements VNodeInterface {
   type = "Root";
   parent = null;
@@ -583,6 +620,7 @@ class RootVNode extends VNode implements VNodeInterface {
   }
 }
 
+// generate the V-Nodes and V-Tree based on the objects parsed by the jsx babel plugin
 function asVNode(
   tag: string | Function | undefined,
   props: JsxProps
@@ -637,7 +675,7 @@ export function jsx(
 }
 
 /**
- * render the given markup into the given dom node
+ * render the given markup into the given HTML node
  *
  * @param {string|HTMLElement|JSX} markup - html as string, html element or jsx template
  * @param {HTMLElement} domNode - container for the template to be rendered into
@@ -659,6 +697,7 @@ export function render(
     (el) => (el.style.background = "#ccffcc")
   );
 
+  // the content of the given DOM Node was already rendered by jsx-runtime, and it only needs to be updated
   const isReRender = renderedVTrees.has(domNode);
 
   if (
@@ -692,19 +731,20 @@ export function render(
         oldVTree.children = vTree.children;
       } else {
         vTree = new RootVNode(markup, domNode);
-        // diff
+        // diff and patch DOM based on the last render
         (oldVTree as RootVNode).diffAndPatch(vTree);
       }
-
-      renderedVTrees.set(domNode, vTree);
-    } else {
+    }
+    // first time render
+    else {
       vTree = new RootVNode(markup, domNode);
       domNode.append(vTree.asNode());
     }
 
+    // memorize the V-Tree which rendered the current DOM, to use it in future re-renders
     renderedVTrees.set(domNode, vTree);
 
-    // call all ref callbacks found during creation of new node during render
+    // call all ref callbacks found during creation of new nodes during render
     while (refsToCall.length) {
       // remove first from list, and invoke it
       refsToCall.splice(0, 1)[0]();
@@ -714,6 +754,17 @@ export function render(
   }
 }
 
+/**
+ * the provided string will be rendered as markup and not escaped / sanitized.
+ * Use this with caution because theoretically it allows broken html or even xss attacks
+ *
+ *
+ * @export
+ * @param {string} content - html as string which needs to be rendered
+ * @returns {VNodeInterface}
+ * @example
+ * `<article>{ rawHtml(richText) }</article>`
+ */
 export function rawHtml(content: string): VNodeInterface {
   return new (class RawHtml extends VNode implements VNodeInterface {
     parent: VNodeInterface = null as any;
@@ -723,17 +774,16 @@ export function rawHtml(content: string): VNodeInterface {
     content: string;
     node?: Node;
 
-    /**
-     *
-     */
     constructor(content: string) {
       super();
       this.content = content;
     }
+
     removeFromDOM() {
       this.childNodes.forEach((node) => node.parentElement!.removeChild(node));
     }
 
+    // simple re-renders without diffing and patching in case of modified content
     diffAndPatch(newNode: RawHtml) {
       if ((newNode.content = this.content)) {
         newNode.node = this.node;
