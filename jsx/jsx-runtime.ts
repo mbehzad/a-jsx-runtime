@@ -1,6 +1,7 @@
 /**
  * provides functions needed by babel for a custom pragma
- * to render parsed jsx code to html
+ * to render parsed jsx code to html,
+ * diff and patch in subsequent renders
  */
 
 // a map between v-trees and rendered DOM nodes / containers
@@ -50,7 +51,6 @@ type ChildrenProps = {
  */
 type JsxProps = Attributes & SpecialAttributes & ChildrenProps;
 
-// null when checking the parent when root is fragment itself
 /**
  * return the closest ancestor of the given VNode which has an DOM Element (i.e. is not a Fragment)
  * @param vNode {VNodeInterface}
@@ -278,13 +278,23 @@ class VNode {}
 
 // Interface which will be implemented by all types of nodes in the V-DOM Tree
 interface VNodeInterface {
+  // the html content as string, which allows to use as `el.innerHTML = <div>...</div>`
   toString(): string;
+  // creates HTML Nodes (HTMLElement, SVGElement, DocumentFragment and Text node) for the V-Tree
   asNode(): Node;
+  // reference to the parent V-Node of this V-Node. (i.e. this node was the child element in jsx)
+  // null in case of the root element from the render tree
   parent: VNodeInterface | null;
+  // list of V-Node converted child element from jsx code
   children: Array<VNodeInterface | never>;
+  // e.g. text, html element, null etc
   type: string;
+  // reference to the created HTML element for this V-Node
   node?: Node;
+  // removes all HTML Elements which were rendered as part of this V-Node or its children from jsx code
   removeFromDOM(): void;
+  // update the DOM node which were rendered for this v-node and it's children
+  // to reflect all changes coming from the new V-Node
   diffAndPatch(newNode: VNodeInterface): void;
 }
 
@@ -340,6 +350,7 @@ class ElementVNode extends VNode implements VNodeInterface {
       vNode = vNode.parent;
     }
 
+    // store the svg context information to the property to allow using it when the v-node is cloned
     this.svgContext = svgContext;
 
     const node = asNode(
@@ -355,9 +366,11 @@ class ElementVNode extends VNode implements VNodeInterface {
 
     return node;
   }
+
   removeFromDOM() {
     this.node.parentElement!.removeChild(this.node);
   }
+
   diffAndPatch(newNode: ElementVNode) {
     if (newNode.tag === this.tag) {
       newNode.node = this.node;
@@ -813,9 +826,3 @@ export function rawHtml(content: string): VNodeInterface {
     }
   })(content);
 }
-
-// gotchas:
-// - styles will override (could do: setting each rule individually)
-// - ref : only called on creation of Element, not on ref change
-
-// window.renderedVTrees = renderedVTrees;

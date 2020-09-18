@@ -464,3 +464,25 @@ window.reRenderSvg2 = () => render(markup1(), $container);
 window.reRender7_1 = () => render(markup7(1), $container);
 window.reRender7_2 = () => render(markup7(2), $container);
 window.reRender7_3 = () => render(markup7(3), $container);
+
+
+function Func1({children}) {
+  console.log("Func-1");
+  return "assasds"
+  return <div>{children}</div>
+}
+
+function Func2() {
+
+  console.log("Func-2");
+  throw new Error("aaaa");
+
+
+  return <p>Text</p>
+}
+
+render((<div>
+  <Func1>
+    <Func2 />
+  </Func1>
+</div>), $container)
