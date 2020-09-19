@@ -1,4 +1,4 @@
-import { render, rawHtml } from "./jsx/jsx-runtime";
+import { render, rawHtml, Deferred, VNodeInterface } from "./jsx/jsx-runtime";
 
 const xss = "<img src=x onerror=\"alert('XSS Attack')\">"; //"<script>alert('-.-')</script>";
 
@@ -358,9 +358,7 @@ function markup6(a) {
   return (
     <div>
       <svg id="foo6" viewBox="0 0 10 10" x="200" width="100">
-        <>
-          {a && <circle cx="5" cy="5" r="6" />}
-        </>
+        <>{a && <circle cx="5" cy="5" r="6" />}</>
       </svg>
       <button>submit</button>
     </div>
@@ -465,24 +463,40 @@ window.reRender7_1 = () => render(markup7(1), $container);
 window.reRender7_2 = () => render(markup7(2), $container);
 window.reRender7_3 = () => render(markup7(3), $container);
 
-
-function Func1({children}) {
+function Func1({ children }) {
   console.log("Func-1");
-  return "assasds"
-  return <div>{children}</div>
+  return <div>{children}</div>;
 }
+
+function timer(t: number): Promise<VNodeInterface> {
+  return new Promise((res) => {
+    setTimeout(() => {
+      res(<p>new text</p>);
+    }, t);
+  });
+}
+
+const p = timer(5000);
 
 function Func2() {
-
-  console.log("Func-2");
-  throw new Error("aaaa");
-
-
-  return <p>Text</p>
+  return <Deferred placeholder={<h2>waiting...</h2>} contentPromise={p} />;
 }
 
-render((<div>
-  <Func1>
-    <Func2 />
-  </Func1>
-</div>), $container)
+render(
+  <div>
+    <Func1>
+      <Func2 />
+    </Func1>
+  </div>,
+  $container
+);
+
+window.reRender_sus = () =>
+  render(
+    <div>
+      <Func1>
+        <Func2 />
+      </Func1>
+    </div>,
+    $container
+  );

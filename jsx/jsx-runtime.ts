@@ -89,7 +89,7 @@ function getChildrenWithNodes(
 /**
  * returns a tuple of the closest ancestor which has a DOM Node,
  * and the node which has a DOM node and is rendered as the next sibling for the provided node in the DOM.
- * Or null when it is the last child itsel
+ * Or null when it is the last child itself
  *
  * @param {VNodeInterface} vNode
  * @returns {([Node, Node | null])}
@@ -186,7 +186,7 @@ function asHtmlString(
  * @param tag {string|Function} - tag argument of the jsx call
  * @param props {Object} - props argument of jsx call
  */
-function asNode<T extends Node>(
+function asNode(
   tag: string | undefined,
   props: Attributes & SpecialAttributes,
   children: VNodeInterface[],
@@ -277,7 +277,7 @@ function diffAndPatchChildren(
 class VNode {}
 
 // Interface which will be implemented by all types of nodes in the V-DOM Tree
-interface VNodeInterface {
+export interface VNodeInterface {
   // the html content as string, which allows to use as `el.innerHTML = <div>...</div>`
   toString(): string;
   // creates HTML Nodes (HTMLElement, SVGElement, DocumentFragment and Text node) for the V-Tree
@@ -825,4 +825,68 @@ export function rawHtml(content: string): VNodeInterface {
       return documentFragment;
     }
   })(content);
+}
+
+export function Deferred({
+  placeholder,
+  contentPromise,
+}: {
+  placeholder: VNodeInterface;
+  contentPromise: Promise<VNodeInterface>;
+}) {
+  return new DeferredVNode({
+    placeholder,
+    contentPromise,
+  });
+}
+export class DeferredVNode extends VNode implements VNodeInterface {
+  type = "Deferred";
+  parent: VNodeInterface = null as any;
+  children: Array<VNodeInterface>;
+
+  placeholder: VNodeInterface;
+  contentPromise: Promise<VNodeInterface>;
+
+  /**
+   *
+   */
+  constructor({
+    placeholder,
+    contentPromise,
+  }: {
+    placeholder: VNodeInterface;
+    contentPromise: Promise<VNodeInterface>;
+  }) {
+    super();
+    this.placeholder = placeholder;
+    this.contentPromise = contentPromise;
+    this.children = [new FragmentVNode([placeholder])];
+  }
+
+  asNode() {
+    this.contentPromise.then((content) => {
+      const newContent = new FragmentVNode([content]);
+      this.children[0].diffAndPatch(newContent);
+      this.children = [newContent];
+    });
+
+    return this.children[0].asNode();
+  }
+
+  toString() {
+    return this.placeholder.toString();
+  }
+
+  removeFromDOM() {
+    this.children.forEach((childVNode) => childVNode.removeFromDOM());
+  }
+
+  diffAndPatch(newNode: DeferredVNode) {
+    // assuming there is no re-renders during the resolve period,
+    // were the promise is not changed but the placeholder is
+    if (newNode.contentPromise !== this.contentPromise) {
+      this.removeFromDOM();
+      insertNewItem(newNode);
+    }
+  }
 }
