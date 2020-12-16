@@ -1,15 +1,14 @@
-import { render, rawHtml, Deferred, VNodeInterface } from "./jsx/jsx-runtime";
+import { render, rawHtml, Suspense, VNodeInterface } from "./jsx/jsx-runtime";
 
 const xss = "<img src=x onerror=\"alert('XSS Attack')\">"; //"<script>alert('-.-')</script>";
 
-function RTE(props: /*{ txt, "on-click": onClick }*/ {
-  txt: string;
-  ref?: Function;
-}) {
+function RTE(props: { txt: string; "on-click"?: Function }) {
   console.log("onClick", props["on-click"]);
   return (
-    <p ref={(el: HTMLElement) => console.log("my div ::ref::3.2", el)}>
-      {props.txt}
+    <p
+      on-click={props["on-click"]}
+    >
+      {rawHtml(props.txt)}
     </p>
   );
 }
@@ -408,7 +407,7 @@ function Comp3() {
   return <div>comp content</div>;
 }
 
-const $container = document.getElementById("container");
+const $container = document.getElementById("container")!;
 
 window.reRender1 = () => render(markup3(1), $container);
 window.reRender2 = () => render(markup3(2), $container);
@@ -479,13 +478,21 @@ function timer(t: number): Promise<VNodeInterface> {
 const p = timer(5000);
 
 function Func2() {
-  return <Deferred placeholder={<h2>waiting...</h2>} contentPromise={p} />;
+  return
+  <Suspense placeholder={<h2>waiting...</h2>}
+  contentPromise={func(p, )} />;
 }
 
 render(
   <div>
     <Func1>
       <Func2 />
+      <RTE
+        txt="<b>le text</b>"
+        ref={(el: HTMLElement) => console.log("my div ::ref::3.1", el)}
+        on-click={(e: HTMLElement) => console.log(e)}
+      />
+      {xss}
     </Func1>
   </div>,
   $container

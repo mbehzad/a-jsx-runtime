@@ -3,6 +3,7 @@ const path = require("path");
 module.exports = {
   entry: {
     main: ['./main.tsx'],
+    examples: ['./examples/main.tsx'],
   },
   output: {
     filename: '[name].js',
@@ -44,10 +45,18 @@ module.exports = {
             loader: 'babel-loader',
             options: {
               presets: [
-                '@babel/preset-env',
+                [
+                  "@babel/preset-env",
+                  {
+                    "targets": {
+                      "chrome": "84",
+                    }
+                  }
+                ],
                 '@babel/preset-typescript',
               ],
               plugins: [
+                ['@babel/plugin-proposal-class-properties', { loose: true }],
                 [
                   "@babel/plugin-transform-react-jsx",
                   {
@@ -75,7 +84,6 @@ module.exports = {
     hot: true,
     quiet: false,
     port: 8083,
-    //watchContentBase: true,
     host: "0.0.0.0",
     disableHostCheck: true,
     open: false,

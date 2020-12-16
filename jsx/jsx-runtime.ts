@@ -4,6 +4,7 @@
  * diff and patch in subsequent renders
  */
 
+
 // a map between v-trees and rendered DOM nodes / containers
 const renderedVTrees = new WeakMap<Element, RootVNode | ElementVNode>();
 // list of `ref` callbacks to be called after the DOM nodes are rendered
@@ -31,15 +32,7 @@ type SpecialAttributes = {
 //   text
 //   <div/>
 // </elem>
-type JSXChild =
-  | VNodeInterface
-  | Node
-  | string
-  | number
-  | boolean
-  | null
-  | undefined
-  | JSXChild[];
+type JSXChild = VNodeInterface | Node | string | number | boolean | null | undefined | JSXChild[];
 
 // child elements in the jsx markup which will be passed to the h function as `props.children`
 type ChildrenProps = {
@@ -61,7 +54,7 @@ function getParentElementNode(vNode: VNodeInterface): ElementVNode {
     if (vNode.node) break;
   }
 
-  // `.node` is only on "Text" and "Element", "RawHtml" type VNode, and only Element has children
+  // `.node` is only on "Text" and "Element" type VNode, and only Element has children
   return (vNode as unknown) as ElementVNode;
 }
 
@@ -72,13 +65,9 @@ function getParentElementNode(vNode: VNodeInterface): ElementVNode {
  * @param {VNodeInterface} [alwaysAllow] - always contain the provided node in the returned list, even if it is not an element with DOM Node
  * @returns {VNodeInterface[]}
  */
-function getChildrenWithNodes(
-  vNode: VNodeInterface,
-  alwaysAllow?: VNodeInterface
-): VNodeInterface[] {
-  vNode.children;
+function getChildrenWithNodes(vNode: VNodeInterface, alwaysAllow?: VNodeInterface): VNodeInterface[] {
   return vNode.children
-    .map((childNode) => {
+    .map(childNode => {
       if (childNode === alwaysAllow) return childNode;
       if (childNode.node) return childNode;
       return getChildrenWithNodes(childNode, alwaysAllow);
@@ -98,7 +87,15 @@ function getParentAndNextSibling(vNode: VNodeInterface): [Node, Node | null] {
   // node ancestor with Element,
   const parentWithElement = getParentElementNode(vNode);
   const siblings = getChildrenWithNodes(parentWithElement, vNode);
-  const prevSibling = siblings[siblings.indexOf(vNode) - 1];
+
+  const indexOfNodeInSiblingsList = siblings.indexOf(vNode);
+
+  // no prev sibling, put before any other element (or null if parent has no children yet)
+  if (indexOfNodeInSiblingsList === 0) {
+    return [parentWithElement.node, parentWithElement.node.firstChild];
+  }
+
+  const prevSibling = siblings[indexOfNodeInSiblingsList - 1];
   const nextSiblingNode = prevSibling ? prevSibling.node!.nextSibling : null;
 
   return [parentWithElement.node, nextSiblingNode];
@@ -132,10 +129,11 @@ function sanitize(text: string): string {
 function getOuterHtml(element: Node): string {
   if (element instanceof Element) return element.outerHTML;
   if (element instanceof Text) return sanitize(element.wholeText);
-  if (element instanceof DocumentFragment)
+  if (element instanceof DocumentFragment) {
     return Array.from(element.childNodes)
-      .map((el) => getOuterHtml(el))
+      .map(el => getOuterHtml(el))
       .join("");
+  }
 
   // shouldn't reach this point
   console.warn("getOuterHtml does not support this type of element", element);
@@ -148,11 +146,7 @@ function getOuterHtml(element: Node): string {
  * @param tag {string|Function} - tag argument of the jsx call
  * @param props {Object} - props argument of jsx call
  */
-function asHtmlString(
-  tag: string | Function,
-  props: Attributes & SpecialAttributes,
-  children: VNodeInterface[]
-) {
+function asHtmlString(tag: string | Function, props: Attributes & SpecialAttributes, children: VNodeInterface[]) {
   const attributes = Object.entries(props)
     .filter(([, value]) => truthy(value))
     .map(([key, value]) => {
@@ -161,13 +155,14 @@ function asHtmlString(
 
       // for style as object:
       // (style:) {display: "none", position: "absolute"} ==> 'display: none; position: absolute;'
-      if (key === "style" && typeof value === "object")
+      if (key === "style" && typeof value === "object") {
         value = Object.entries(value)
           // ignore stuff like `{background: active && "red"}` when `active === false / null / undefined`
           .filter(([, v]) => truthy(v))
           // currently supports "background-color" not "backgroundColor"
           .map(([k, v]) => `${k}: ${v}`)
           .join("; ");
+      }
 
       // (class:) ["btn", "red"] ==> "btn red"
       if (key === "class" && Array.isArray(value)) value = value.join(" ");
@@ -176,7 +171,7 @@ function asHtmlString(
     })
     .join(" ");
 
-  const content = children.map((child) => child.toString()).join("");
+  const content = children.map(child => child.toString()).join("");
 
   return `<${tag} ${attributes}>${content}</${tag}>`;
 }
@@ -190,11 +185,11 @@ function asNode(
   tag: string | undefined,
   props: Attributes & SpecialAttributes,
   children: VNodeInterface[],
-  svgContext = false
+  svgContext = false,
 ): Element | DocumentFragment {
   // fragment
   if (!tag) {
-    const fragments = children.map((item) => item.asNode());
+    const fragments = children.map(item => item.asNode());
 
     const documentFragment = document.createDocumentFragment();
 
@@ -202,28 +197,18 @@ function asNode(
     return documentFragment;
   }
 
-  const { ref, ...attrs } = props;
-
   // remember if the svg context was set for this node, and replace after generating all children
 
   // currently not supporting the `is` option for Customized built-in elements
-  const node = svgContext
-    ? document.createElementNS("http://www.w3.org/2000/svg", tag)
-    : document.createElement(tag);
-
-  // currently only supporting ref on html elements. not template functions
-  // ref is only called when element is created. not when the ref property is changed
-  if (typeof ref === "function") {
-    refsToCall.push(() => ref(node));
-  }
+  const node = svgContext ? document.createElementNS("http://www.w3.org/2000/svg", tag) : document.createElement(tag);
 
   // add attributes, event listeners etc.
-  ElementVNode.addProps(node, attrs);
+  ElementVNode.addProps(node, props);
 
   node.append(
     ...children
-      //.flat()
-      .map((child) => child.asNode())
+      // .flat()
+      .map(child => child.asNode()),
   );
 
   return node;
@@ -244,12 +229,10 @@ function insertNewItem(newNode: VNodeInterface) {
  * @param {VNodeInterface} oldNode - v-node from the old render
  * @param {VNodeInterface} newNode- v-node from the new tree which its children have to replace the children of the old node
  */
-function diffAndPatchChildren(
-  oldNode: VNodeInterface,
-  newNode: VNodeInterface
-) {
+function diffAndPatchChildren(oldNode: VNodeInterface, newNode: VNodeInterface) {
   oldNode.children.forEach((oldChild, ix) => {
     const newChild = newNode.children[ix];
+
     // child was removed
     if (!newChild) oldChild.removeFromDOM();
     // child is modified
@@ -265,7 +248,7 @@ function diffAndPatchChildren(
   const newItems = newNode.children.slice(oldNode.children.length);
   if (newItems.length) {
     const documentFragment = document.createDocumentFragment();
-    newItems.forEach((item) => documentFragment.append(item.asNode()));
+    newItems.forEach(item => documentFragment.append(item.asNode()));
 
     const [parent, nextSibling] = getParentAndNextSibling(newItems[0]);
     parent.insertBefore(documentFragment, nextSibling);
@@ -308,21 +291,13 @@ class ElementVNode extends VNode implements VNodeInterface {
   parent: VNodeInterface = null as any;
   svgContext: boolean = false; // will be set to true when element is an SVG Element
 
-  constructor({
-    tag,
-    props,
-    children,
-  }: {
-    tag: string;
-    props: Attributes & SpecialAttributes;
-    children: JSXChild[];
-  }) {
+  constructor({ tag, props, children }: { tag: string; props: Attributes & SpecialAttributes; children: JSXChild[] }) {
     super();
     this.tag = tag;
     this.props = props;
 
     // convert child jsx content to VNodes
-    this.children = children.map((child) => {
+    this.children = children.map(child => {
       if (Array.isArray(child)) return new FragmentVNode(child);
       if (child instanceof VNode) return child as VNodeInterface;
       if (child instanceof Node) return new LiveNodeVNode(child);
@@ -331,7 +306,7 @@ class ElementVNode extends VNode implements VNodeInterface {
       return new TextVNode(child as string | number | true);
     });
     // set parent property on all children
-    this.children.forEach((child) => (child.parent = this));
+    this.children.forEach(child => (child.parent = this));
   }
 
   toString() {
@@ -343,6 +318,7 @@ class ElementVNode extends VNode implements VNodeInterface {
     let svgContext = false;
     let vNode: VNodeInterface = this;
     while (vNode.parent) {
+      // @ts-ignore - ElementVNode has the tag property, other are undefined
       if (vNode.tag === "svg") {
         svgContext = true;
         break;
@@ -353,12 +329,7 @@ class ElementVNode extends VNode implements VNodeInterface {
     // store the svg context information to the property to allow using it when the v-node is cloned
     this.svgContext = svgContext;
 
-    const node = asNode(
-      this.tag,
-      this.props,
-      this.children,
-      this.svgContext
-    ) as Element;
+    const node = asNode(this.tag, this.props, this.children, this.svgContext) as Element;
     this.node = node;
 
     // memorize for next subtree re-renders
@@ -368,7 +339,11 @@ class ElementVNode extends VNode implements VNodeInterface {
   }
 
   removeFromDOM() {
-    this.node.parentElement!.removeChild(this.node);
+    if (this.node.parentNode) {
+      this.node.parentNode.removeChild(this.node);
+    } else {
+      console.warn("jsx-runtime: can't remove", this);
+    }
   }
 
   diffAndPatch(newNode: ElementVNode) {
@@ -390,41 +365,39 @@ class ElementVNode extends VNode implements VNodeInterface {
     renderedVTrees.set(this.node, newNode);
   }
 
-  static fromExistingElementNode(
-    vNode: ElementVNode,
-    children: Array<VNodeInterface | VNodeInterface[]>
-  ) {
+  static fromExistingElementNode(vNode: ElementVNode, children: Array<VNodeInterface | VNodeInterface[]>) {
     const { tag, props, parent, node, svgContext } = vNode;
     const newVNode = new ElementVNode({ tag, props, children });
     Object.assign(newVNode, { parent, node, svgContext });
     return newVNode;
   }
 
-  static addProps(
-    element: Element,
-    newProps: Record<string, any>,
-    oldProps: Record<string, any> = {}
-  ) {
+  static addProps(element: Element, newProps: Record<string, any>, oldProps?: Record<string, any>) {
+    const isDiff = typeof oldProps !== "undefined";
+    if (!isDiff) oldProps = {};
+
     // iterate over all modified new and old properties and set/remove/update them
-    Array.from(new Set([...Object.keys(newProps), ...Object.keys(oldProps)]))
-      .map((propName) => ({
+    Array.from(new Set([...Object.keys(newProps), ...Object.keys(oldProps!)]))
+      .map(propName => ({
         propName,
-        oldValue: oldProps[propName],
+        oldValue: oldProps![propName],
         newValue: newProps[propName],
       }))
       .filter(({ newValue, oldValue }) => newValue !== oldValue)
       .forEach(({ propName, newValue, oldValue }) => {
         // for style as object:
         // (style:) {display: "none", position: "absolute"} ==> 'display: none; position: absolute;'
-        if (propName === "style" && typeof newValue === "object")
+        if (propName === "style" && typeof newValue === "object") {
           newValue = Object.entries(newValue)
             .filter(([, v]) => truthy(v))
             .map(([k, v]) => `${k}: ${v}`)
             .join("; ");
+        }
 
         // (class:) ["btn", "red"] ==> "btn red"
-        if (propName === "class" && Array.isArray(newValue))
+        if (propName === "class" && Array.isArray(newValue)) {
           newValue = newValue.join(" ");
+        }
         // props starting with "on-" are event listeners
         if (
           propName.startsWith("on-") &&
@@ -436,28 +409,34 @@ class ElementVNode extends VNode implements VNodeInterface {
           // remove leading "on-""
           const event = propName.replace(/^on-/, "");
 
-          if (typeof newValue === "function" || typeof newValue === "object")
-            element.addEventListener(
-              event,
-              newValue as EventListenerOrEventListenerObject
-            );
+          // key has the form of "on-change". value is the callback function or an object implementing {EventListener} interface
+          if (typeof newValue === "function" || typeof newValue === "object") {
+            element.addEventListener(event, newValue as EventListenerOrEventListenerObject);
+          }
 
-          if (typeof oldValue === "function" || typeof oldValue === "object")
-            element.removeEventListener(
-              event,
-              oldValue as EventListenerOrEventListenerObject
-            );
+          if (typeof oldValue === "function" || typeof oldValue === "object") {
+            element.removeEventListener(event, oldValue as EventListenerOrEventListenerObject);
+          }
+        } else if (propName === "ref" && typeof newValue === "function") {
+          refsToCall.push(() => newValue(element));
+        } // old ref isn't unset
+        // the `checked` and `value` attribute on input elements will update the `defaultChecked` and `defaultValue` property.
+        // also possible to test if class has the property and always set it via prop instead of attribute
+        // but there are some ready only properties. and unclear if our custom elements always have a setter when there is a getter for some props
+        else if (isDiff && (propName === "checked" || propName === "value")) {
+          // @ts-ignore - e.g. input elements need checked set as property not only attribute when it is changes
+          element[propName] = newValue;
         }
         // boolean attribute set without value
         else if (newValue === true) element.setAttribute(propName, "");
         // remove old attributes which are false now
         else if (!truthy(newValue)) element.removeAttribute(propName);
         // update to new value as string
-        else if (typeof newValue === "string" || typeof newValue === "number")
+        else if (typeof newValue === "string" || typeof newValue === "number") {
           element.setAttribute(propName, String(newValue));
-        // key has the form of "on-change". value is the callback function or an object implementing {EventListener} interface
+        }
         // @ts-ignore - providing the value as property to html element
-        else element[propName] = newValue; // @TODO: remove old obj when new is null:: new null -> old: str? -> removeAtt, event? : removeEv, obj?: [prop] = undef
+        else element[propName] = newValue;
       });
   }
 }
@@ -471,7 +450,7 @@ class FragmentVNode extends VNode implements VNodeInterface {
   constructor(children: JSXChild[]) {
     super();
 
-    this.children = children.map((child) => {
+    this.children = children.map(child => {
       if (Array.isArray(child)) return new FragmentVNode(child);
       if (child instanceof VNode) return child as VNodeInterface;
       if (child instanceof Node) return new LiveNodeVNode(child);
@@ -479,7 +458,7 @@ class FragmentVNode extends VNode implements VNodeInterface {
       return new TextVNode(child as string | number | true);
     });
 
-    this.children.forEach((child) => (child.parent = this));
+    this.children.forEach(child => (child.parent = this));
   }
 
   asNode() {
@@ -489,7 +468,7 @@ class FragmentVNode extends VNode implements VNodeInterface {
   }
 
   toString() {
-    return this.children.map((child) => child.toString()).join("");
+    return this.children.map(child => child.toString()).join("");
   }
 
   diffAndPatch(newVNode: FragmentVNode) {
@@ -497,7 +476,7 @@ class FragmentVNode extends VNode implements VNodeInterface {
   }
 
   removeFromDOM() {
-    this.children.forEach((child) => child.removeFromDOM());
+    this.children.forEach(child => child.removeFromDOM());
   }
 }
 
@@ -514,7 +493,7 @@ class TextVNode extends VNode implements VNodeInterface {
    */
   constructor(content: string | number | boolean) {
     super();
-    this.props = { content }; //@TODO:
+    this.props = { content };
   }
 
   asNode() {
@@ -533,7 +512,7 @@ class TextVNode extends VNode implements VNodeInterface {
   }
 
   removeFromDOM() {
-    this.node.parentElement!.removeChild(this.node);
+    this.node.parentNode!.removeChild(this.node);
   }
 }
 
@@ -542,15 +521,13 @@ class NullVNode extends VNode implements VNodeInterface {
   type = "Null";
   children = [];
   parent: VNodeInterface = null as any;
-  /**
-   *
-   */
+
   constructor() {
     super();
   }
 
   asNode() {
-    //return null; // return empty fragment?
+    // return null; // return empty fragment?
     return document.createDocumentFragment();
   }
 
@@ -634,13 +611,26 @@ class RootVNode extends VNode implements VNodeInterface {
 }
 
 // generate the V-Nodes and V-Tree based on the objects parsed by the jsx babel plugin
-function asVNode(
-  tag: string | Function | undefined,
-  props: JsxProps
-): VNodeInterface {
+function asVNode(tag: string | Function | undefined, props: JsxProps): VNodeInterface {
   if (typeof tag === "function") {
-    let result = tag(props);
-    if (result instanceof VNode) return result as VNodeInterface;
+    let ref: Function | undefined = undefined;
+    if (props.ref) {
+      ref = props.ref;
+      delete props.ref;
+    }
+    const result = tag(props);
+    if (result instanceof VNode) {
+      if (typeof ref === "function") {
+        refsToCall.push(() => {
+          // @ts-ignore node property might exist or not. this is checked here
+          const vNode = result.node ? result : getChildrenWithNodes(result as VNodeInterface)[0];
+
+          // @ts-ignore vNode with node is returned
+          if (vNode) ref!(vNode.node);
+        });
+      }
+      return result as VNodeInterface;
+    }
     if (result instanceof Node) return new LiveNodeVNode(result);
     // null jsx node
     if (!truthy(result)) return new NullVNode();
@@ -650,9 +640,7 @@ function asVNode(
 
   const { children, ...attr } = props;
 
-  return tag
-    ? new ElementVNode({ tag, props: attr, children })
-    : new FragmentVNode(children);
+  return tag ? new ElementVNode({ tag, children, props: attr }) : new FragmentVNode(children);
 }
 
 /**
@@ -679,7 +667,7 @@ export function Fragment(props: JsxProps) {
 // jsx is called when the element has one or zero children
 export function jsx(
   tag: string | Function,
-  props: Attributes & SpecialAttributes & { children?: JSXChild }
+  props: Attributes & SpecialAttributes & { children?: JSXChild },
 ): VNodeInterface {
   // @ts-ignore - wrapping the children as array to re-use jsxs method
   props.children = props.hasOwnProperty("children") ? [props.children] : [];
@@ -690,34 +678,19 @@ export function jsx(
 /**
  * render the given markup into the given HTML node
  *
- * @param {string|HTMLElement|JSX} markup - html as string, html element or jsx template
+ * @param {JSXChild} markup - html as string, html element or jsx template
  * @param {HTMLElement} domNode - container for the template to be rendered into
  * @param {boolean} [append=false] - should the provided markup be appended to the existing markup, or default replace it
  */
 export function render(
-  markup:
-    | string
-    | number
-    | null
-    | boolean
-    | undefined
-    | HTMLElement
-    | VNodeInterface, // @TODO: specific support for Template? (.content.clone)
+  markup: string | number | null | boolean | undefined | HTMLElement | VNodeInterface,
   domNode: HTMLElement,
-  append: boolean = false
+  append: boolean = false,
 ) {
-  Array.from(document.body.querySelectorAll("*")).forEach(
-    (el) => (el.style.background = "#ccffcc")
-  );
-
   // the content of the given DOM Node was already rendered by jsx-runtime, and it only needs to be updated
   const isReRender = renderedVTrees.has(domNode);
 
-  if (
-    typeof markup === "string" ||
-    typeof markup === "number" ||
-    markup === true
-  ) {
+  if (typeof markup === "string" || typeof markup === "number" || markup === true) {
     markup = new TextVNode(markup);
   } else if (markup instanceof Node) {
     markup = new LiveNodeVNode(markup);
@@ -735,9 +708,7 @@ export function render(
 
       // was previously rendered as a subtree from another render
       if (oldVTree.type === "Element") {
-        vTree = ElementVNode.fromExistingElementNode(oldVTree as ElementVNode, [
-          markup,
-        ]);
+        vTree = ElementVNode.fromExistingElementNode(oldVTree as ElementVNode, [markup]);
         (oldVTree as ElementVNode).diffAndPatch(vTree);
         // update the children property in the memory reference from the previous render,
         // attributes, etc will stay the same
@@ -767,6 +738,101 @@ export function render(
   }
 }
 
+// provides component to autonomous update its content when provided promise resolved
+export class SuspenseVNode extends VNode implements VNodeInterface {
+  type = "Suspense";
+  parent: VNodeInterface = null as any;
+  children: Array<VNodeInterface>;
+
+  placeholder: JSXChild;
+  promise: Promise<any>;
+  template: Function;
+
+  // provided promise is resolved and content updated
+  isResolved = false;
+
+  // V-Node is already removed from node because of a re-render
+  isRemoved = false;
+
+  constructor({
+    placeholder,
+    promise,
+    template,
+  }: {
+    placeholder: JSXChild;
+    promise: Promise<any>;
+    template: Function;
+  }) {
+    super();
+
+    this.placeholder = placeholder;
+    this.promise = promise;
+    this.template = template;
+    const child = new FragmentVNode([placeholder]);
+    child.parent = this;
+    this.children = [child];
+  }
+
+  asNode() {
+    this.waitAndReRender();
+
+    return this.children[0].asNode();
+  }
+
+  waitAndReRender() {
+    this.promise.then(value => {
+      if (this.isRemoved) return;
+      this.isResolved = true;
+      const contentMarkup = this.template(value);
+      const newContent = new FragmentVNode([contentMarkup]);
+      newContent.parent = this;
+      this.children[0].diffAndPatch(newContent);
+      this.children = [newContent];
+    });
+  }
+
+  // only returning the placeholder.
+  // not automatically rendering when promise resolves
+  toString() {
+    return this.placeholder ? this.placeholder.toString() : "";
+  }
+
+  removeFromDOM() {
+    this.isRemoved = true;
+    this.children.forEach(childVNode => childVNode.removeFromDOM());
+  }
+
+  diffAndPatch(newNode: SuspenseVNode) {
+    if (!this.isResolved) {
+      // patches the placeholder with each other
+      diffAndPatchChildren(this, newNode);
+      newNode.waitAndReRender();
+    }
+    // already resolved, promise but has been changed.
+    // start new with the placeholder
+    else if (this.promise !== newNode.promise) {
+      this.removeFromDOM();
+      insertNewItem(newNode);
+    }
+    // already resolved, promise still the same.
+    // diff and patch the template results
+    else {
+      newNode.promise.then(value => {
+        newNode.isResolved = true;
+        const contentMarkup = newNode.template(value);
+        const newContent = new FragmentVNode([contentMarkup]);
+        newContent.parent = newNode;
+        newNode.children = [newContent];
+
+        diffAndPatchChildren(this, newNode);
+      });
+    }
+
+    // current Suspense Node is not in use any more
+    this.isRemoved = true;
+  }
+}
+
 /**
  * the provided string will be rendered as markup and not escaped / sanitized.
  * Use this with caution because theoretically it allows broken html or even xss attacks
@@ -793,7 +859,7 @@ export function rawHtml(content: string): VNodeInterface {
     }
 
     removeFromDOM() {
-      this.childNodes.forEach((node) => node.parentElement!.removeChild(node));
+      this.childNodes.forEach(node => node.parentElement!.removeChild(node));
     }
 
     // simple re-renders without diffing and patching in case of modified content
@@ -820,73 +886,68 @@ export function rawHtml(content: string): VNodeInterface {
       // basically the `.node` property is used to determine the last html node of the VNode,
       // to position the next VNode's DOM Node after it.
       // therefore .node returns the last node of the raw html
-      if (this.childNodes.length)
+      if (this.childNodes.length) {
         this.node = this.childNodes[this.childNodes.length - 1];
+      }
       return documentFragment;
     }
   })(content);
 }
 
-export function Deferred({
+/**
+ *
+ * @param param0
+ * @example
+ *   <Suspense
+ *     placeholder={<PlaceholderTableRows />}
+ *     promise={pendingRequest}
+ *     template={(response) =>
+ *       <TableRows rows={response.rows} />
+ *     }
+ *   />
+ */
+export function Suspense({
   placeholder,
-  contentPromise,
+  promise,
+  template,
 }: {
-  placeholder: VNodeInterface;
-  contentPromise: Promise<VNodeInterface>;
+  placeholder: JSXChild;
+  promise: Promise<any>;
+  template: Function;
 }) {
-  return new DeferredVNode({
+  return new SuspenseVNode({
     placeholder,
-    contentPromise,
+    promise,
+    template,
   });
 }
-export class DeferredVNode extends VNode implements VNodeInterface {
-  type = "Deferred";
-  parent: VNodeInterface = null as any;
-  children: Array<VNodeInterface>;
 
-  placeholder: VNodeInterface;
-  contentPromise: Promise<VNodeInterface>;
-
-  /**
-   *
-   */
-  constructor({
-    placeholder,
-    contentPromise,
-  }: {
-    placeholder: VNodeInterface;
-    contentPromise: Promise<VNodeInterface>;
-  }) {
-    super();
-    this.placeholder = placeholder;
-    this.contentPromise = contentPromise;
-    this.children = [new FragmentVNode([placeholder])];
+/**
+ * @example
+ *  import { createRef } from "./jsx-runtime";
+ *  function Comp() {
+ *    const ref = createRef<HTMLInputElement>();
+ *
+ *    return (
+ *      <>
+ *        <input ref={ref} />
+ *        <my-label on-click={() => ref.current.focus() } />
+ *      </>
+ *    );
+ *  }
+ */
+export function createRef<T extends HTMLElement | SVGElement = HTMLElement>() {
+  interface RefObject {
+    (el: HTMLElement | SVGElement): void;
+    current: null | T;
   }
 
-  asNode() {
-    this.contentPromise.then((content) => {
-      const newContent = new FragmentVNode([content]);
-      this.children[0].diffAndPatch(newContent);
-      this.children = [newContent];
-    });
+  const result = function (el: HTMLElement | SVGElement) {
+    result.current = el as T;
+  } as RefObject;
+  result.current = null;
 
-    return this.children[0].asNode();
-  }
-
-  toString() {
-    return this.placeholder.toString();
-  }
-
-  removeFromDOM() {
-    this.children.forEach((childVNode) => childVNode.removeFromDOM());
-  }
-
-  diffAndPatch(newNode: DeferredVNode) {
-    // assuming there is no re-renders during the resolve period,
-    // were the promise is not changed but the placeholder is
-    if (newNode.contentPromise !== this.contentPromise) {
-      this.removeFromDOM();
-      insertNewItem(newNode);
-    }
-  }
+  return result;
 }
+
+export type RefObject<T = HTMLElement> = { current: T | null };

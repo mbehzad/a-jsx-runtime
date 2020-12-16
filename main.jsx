@@ -7,14 +7,16 @@ function RTE({ txt }) {
 }
 
 function Button({ children, disabled }) {
-    return (<button disabled={disabled} ref={(el) => console.log("my button ::ref::1", el)}>
-      <span ref={(el) => console.log("my a ::ref::2", el)}>a</span>
-      {children}
-      <>
-        <span ref={(el) => console.log("my a ::ref::3", el)}>a</span>
-        <RTE txt="le text" ref={(el) => console.log("my div ::ref::3.1", el)}/>
-      </>
-    </button>);
+    return (
+      <button disabled={disabled} ref={(el) => console.log("my button ::ref::1", el)}>
+        <span ref={(el) => console.log("my a ::ref::2", el)}>a</span>
+        {children}
+        <>
+          <span ref={(el) => console.log("my a ::ref::3", el)}>a</span>
+          <RTE txt="le text" ref={(el) => console.log("my div ::ref::3.1", el)}/>
+        </>
+      </button>
+    );
 }
 function reflog(el) {
     console.log("my inner div::ref::8", el);
