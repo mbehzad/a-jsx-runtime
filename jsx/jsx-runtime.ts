@@ -118,7 +118,7 @@ function truthy(value: any): boolean {
  */
 function sanitize(text: string): string {
   const div = document.createElement("div");
-  div.innerText = text;
+  div.textContent = text;
   return div.innerHTML;
 }
 

@@ -83,7 +83,7 @@ module.exports = {
     //publicPath
     hot: true,
     quiet: false,
-    port: 8083,
+    port: 9000,
     host: "0.0.0.0",
     disableHostCheck: true,
     open: false,
