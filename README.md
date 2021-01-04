@@ -112,3 +112,4 @@ declare namespace JSX {
   }
 }
 ```
+- add `"jsx": "preserve",` to `tsconfig.json`.
