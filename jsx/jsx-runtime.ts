@@ -786,8 +786,9 @@ export class SuspenseVNode extends VNode implements VNodeInterface {
       const contentMarkup = this.template(value);
       const newContent = new FragmentVNode([contentMarkup]);
       newContent.parent = this;
-      this.children[0].diffAndPatch(newContent);
+      const oldFragmentChild = this.children[0];
       this.children = [newContent];
+      oldFragmentChild.diffAndPatch(newContent);
     });
   }
 
