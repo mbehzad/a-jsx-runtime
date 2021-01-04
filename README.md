@@ -94,7 +94,7 @@ module.exports = {
   ...
 };
 ```
-- update global.ts. e.g.
+- update `global.ts`. e.g.
 ```typescript
 declare namespace JSX {
   interface IntrinsicElements {
