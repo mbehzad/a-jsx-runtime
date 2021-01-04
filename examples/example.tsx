@@ -19,10 +19,13 @@ new (class {
   }
 
   inputRef = createRef<HTMLInputElement>();
-  dataFetch: Promise<Object>;
+  dataFetch: Promise<ResponseData>;
 
   constructor() {
-    this.dataFetch = fetch("./mock.json").then(resp => resp.json());
+    this.dataFetch = fetch("./mock.json")
+      .then(resp => resp.json())
+      // simulate an additional 3sec network delay
+      .then(json => new Promise(resolve => setTimeout(() => resolve(json), 3000)));
 
     this.render();
   }
@@ -31,7 +34,7 @@ new (class {
     render(
       <div>
         {/* style as object or string */}
-        <div style={{display: "grid", "grid-template-columns": "1fr 1fr 1fr", "grid-gap": "12px"}}>
+        <div style={{ display: "grid", "grid-template-columns": "1fr 1fr 1fr", "grid-gap": "12px" }}>
           {/* event, value binding */}
           <button on-click={() => this.value--}>-</button>
           <input
@@ -45,11 +48,15 @@ new (class {
 
         {/* using ref to access the HTMLElement directly */}
         <p on-click={() => this.inputRef.current!.focus()} style="cursor: pointer">
-          go to input field
+          click here to go to the input field
         </p>
 
         {/* conditional render */}
-        {this.value > 2 && <p>slow down! more than <b>2</b>?</p>}
+        {this.value > 2 && (
+          <p>
+            slow down! more than <b>2</b>?
+          </p>
+        )}
 
         {/* pending request with placeholder markup */}
         <Suspense

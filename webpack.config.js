@@ -2,8 +2,7 @@ const path = require("path");
 
 module.exports = {
   entry: {
-    main: ['./main.tsx'],
-    examples: ['./examples/main.tsx'],
+    examples: ['./examples/example.tsx'],
   },
   output: {
     filename: '[name].js',
@@ -78,7 +77,7 @@ module.exports = {
 
   ],
   devServer: {
-    contentBase: path.join(__dirname, './dist'),
+    contentBase: path.join(__dirname, './examples'),
     compress: true,
     //publicPath
     hot: true,
