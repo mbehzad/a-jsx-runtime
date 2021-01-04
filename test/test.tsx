@@ -393,6 +393,28 @@ describe("jsx-runtimes test", function () {
       expect(root.innerHTML).to.equal('<div><span class="bar">text2</span></div>');
     });
 
+    it("should re-render jsx as argument correctly (fragment)", function () {
+      const root = document.createElement("div");
+      render(
+        <div>
+          <p>text</p>
+          <button></button>
+        </div>,
+        root,
+      );
+      render(
+        <div>
+          <>
+            <span class="bar">text2</span>
+          </>
+          <button></button>
+        </div>,
+        root,
+      );
+
+      expect(root.innerHTML).to.equal('<div><span class="bar">text2</span><button></button></div>');
+    });
+
     it("should modify elements and not replace when tag is not changed", function () {
       const root = document.createElement("div");
       render(
@@ -528,10 +550,22 @@ describe("jsx-runtimes test", function () {
       const root = document.createElement("div");
       const button = document.createElement("button");
       button.innerHTML = "<span>text</span>";
-      render(<div>{button}</div>, root);
-      render(<div>{button}</div>, root);
+      render(
+        <div>
+          <span />
+          {button}
+        </div>,
+        root,
+      );
+      render(
+        <div>
+          <span />
+          {button}
+        </div>,
+        root,
+      );
 
-      expect(root.innerHTML).to.equal("<div><button><span>text</span></button></div>");
+      expect(root.innerHTML).to.equal("<div><span></span><button><span>text</span></button></div>");
       expect(root.querySelector("button")).to.equal(button);
     });
 
@@ -639,17 +673,20 @@ describe("jsx-runtimes test", function () {
       const promise = Promise.resolve({ name: "NAME" });
 
       render(
-        <Suspense
-          placeholder={<p>Loading...</p>}
-          promise={promise}
-          template={({ name }: { name: string }) => <div>{name}</div>}
-        />,
+        <div>
+          <Suspense
+            placeholder={<p>Loading...</p>}
+            promise={promise}
+            template={({ name }: { name: string }) => <div>{name}</div>}
+          />
+          <button />
+        </div>,
         root,
       );
 
       await promise;
 
-      expect(root.innerHTML).to.equal("<div>NAME</div>");
+      expect(root.innerHTML).to.equal("<div><div>NAME</div><button></button></div>");
     });
 
     it("should not-replace result with placeholder when same promise is used", async function () {
