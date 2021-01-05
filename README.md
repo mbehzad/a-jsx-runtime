@@ -52,6 +52,7 @@ render(
 render(...);
 ```
 
+For another example see [example.tsx](./examples/example.tsx).
 
 ## Usage
 
