@@ -1,13 +1,10 @@
 const chai = require("chai");
 const { expect } = chai;
-const { describe, it, xit, beforeEach, afterEach } = require("mocha");
+const { describe, it, beforeEach, afterEach } = require("mocha");
 
 const { rawHtml, render, createRef, Suspense } = require("../jsx/jsx-runtime.ts");
 
 describe("jsx-runtimes test", function () {
-  beforeEach(async function () {});
-
-  afterEach(async function () {});
 
   describe("converting to string", function () {
     it("should return jsx as string when used with innerHTML", function () {
