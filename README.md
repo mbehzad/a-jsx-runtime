@@ -26,12 +26,12 @@ render(
       </svg>
     </Heading>
 
-    <input type="checkbox" ref={inputRef} checked={true} />
+    <input type="checkbox" _ref={inputRef} checked={true} />
     <p on-click={e => inputRef.current!.focus()}>label</p>
 
     <ul style="display: flex;">
       {[1, 2].map(n => (
-        <li style={{ padding: "2px", "margin-top": "4px" }}>{n}</li>
+        <li _key={n} style={{ padding: "2px", "margin-top": "4px" }}>{n}</li>
       ))}
     </ul>
 
@@ -103,7 +103,8 @@ declare namespace JSX {
       // for the time being, allow any attribute on jsx element,
       // type libs such as @types/react or similar can also be used for better list of allowed attributes per HTML Element
       [attributeName: string]: string | boolean | number | Object | string[] | null | undefined;
-      ref?: Function;
+      _ref?: Function;
+      _key?: string;
       children?: any;
     };
   }

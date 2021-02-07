@@ -4,7 +4,6 @@
  * diff and patch in subsequent renders
  */
 
-
 // a map between v-trees and rendered DOM nodes / containers
 const renderedVTrees = new WeakMap<Element, RootVNode | ElementVNode>();
 // list of `ref` callbacks to be called after the DOM nodes are rendered
@@ -21,7 +20,8 @@ type Attributes = {
 type SpecialAttributes = {
   class?: string | string[];
   style?: string | { [key: string]: string };
-  ref?: Function;
+  _ref?: Function;
+  _key?: string;
 };
 
 // types of children which will be passed by the jsx parser plugin
@@ -230,29 +230,52 @@ function insertNewItem(newNode: VNodeInterface) {
  * @param {VNodeInterface} newNode- v-node from the new tree which its children have to replace the children of the old node
  */
 function diffAndPatchChildren(oldNode: VNodeInterface, newNode: VNodeInterface) {
-  oldNode.children.forEach((oldChild, ix) => {
-    const newChild = newNode.children[ix];
+  const oldChildren = oldNode.children.map((vnode, index) => ({
+    vnode,
+    index,
+    key: vnode.key,
+    used: false,
+  }));
 
-    // child was removed
-    if (!newChild) oldChild.removeFromDOM();
-    // child is modified
-    else if (newChild.type === oldChild.type) oldChild.diffAndPatch(newChild);
-    // child is replaced
+  const newChildren = newNode.children.map((vnode, index) => ({
+    vnode,
+    index,
+    key: vnode.key,
+  }));
+
+  newChildren.forEach((newChild) => {
+    const key = newChild.key;
+    let oldChild;
+    if (key !== undefined) oldChild = oldChildren.find(child=>child.key === key);
+
+    if (!oldChild) {
+      // first from the list which has not a key
+      // (even if in the new list there is not an item with the same key, don't recycle that item)
+      oldChild = oldChildren.find(child => child.key === undefined && child.used === false);
+    }
+
+    // no vnode from the old list was found which can be used for diff & patching
+    if (!oldChild) {
+      insertNewItem(newChild.vnode);
+    }
+    // diff & patch
     else {
-      oldChild.removeFromDOM();
-      insertNewItem(newChild);
+      oldChild.used = true;
+      // child is modified -> diff & patch
+      if (newChild.vnode.type === oldChild.vnode.type) oldChild.vnode.diffAndPatch(newChild.vnode);
+      // child is replaced -> won't be able to patch vnode from different types
+      else {
+        oldChild.vnode.removeFromDOM();
+        insertNewItem(newChild.vnode);
+      }
     }
   });
 
-  // new addition items
-  const newItems = newNode.children.slice(oldNode.children.length);
-  if (newItems.length) {
-    const documentFragment = document.createDocumentFragment();
-    newItems.forEach(item => documentFragment.append(item.asNode()));
+  // remove obsolete dom elements
+  oldChildren.forEach(oldChild => {
+    if (!oldChild.used) oldChild.vnode.removeFromDOM()
+  })
 
-    const [parent, nextSibling] = getParentAndNextSibling(newItems[0]);
-    parent.insertBefore(documentFragment, nextSibling);
-  }
 }
 
 // base class which will be inherited from jsx and fragments function node generation
@@ -274,6 +297,8 @@ export interface VNodeInterface {
   type: string;
   // reference to the created HTML element for this V-Node
   node?: Node;
+  // will be used for diff & patching a list of items with a previous rendered list
+  key?: string;
   // removes all HTML Elements which were rendered as part of this V-Node or its children from jsx code
   removeFromDOM(): void;
   // update the DOM node which were rendered for this v-node and it's children
@@ -417,7 +442,7 @@ class ElementVNode extends VNode implements VNodeInterface {
           if (typeof oldValue === "function" || typeof oldValue === "object") {
             element.removeEventListener(event, oldValue as EventListenerOrEventListenerObject);
           }
-        } else if (propName === "ref" && typeof newValue === "function") {
+        } else if (propName === "_ref" && typeof newValue === "function") {
           refsToCall.push(() => newValue(element));
         } // old ref isn't unset
         // the `checked` and `value` attribute on input elements will update the `defaultChecked` and `defaultValue` property.
@@ -611,12 +636,13 @@ class RootVNode extends VNode implements VNodeInterface {
 }
 
 // generate the V-Nodes and V-Tree based on the objects parsed by the jsx babel plugin
-function asVNode(tag: string | Function | undefined, props: JsxProps): VNodeInterface {
+function asVNode(tag: string | Function | undefined, {_key: key, ...props}: JsxProps): VNodeInterface {
+
   if (typeof tag === "function") {
     let ref: Function | undefined = undefined;
-    if (props.ref) {
-      ref = props.ref;
-      delete props.ref;
+    if (props._ref) {
+      ref = props._ref;
+      delete props._ref;
     }
     const result = tag(props);
     if (result instanceof VNode) {
@@ -629,6 +655,7 @@ function asVNode(tag: string | Function | undefined, props: JsxProps): VNodeInte
           if (vNode) ref!(vNode.node);
         });
       }
+      if (typeof key !== "undefined") (result as VNodeInterface).key = key;
       return result as VNodeInterface;
     }
     if (result instanceof Node) return new LiveNodeVNode(result);
@@ -640,7 +667,11 @@ function asVNode(tag: string | Function | undefined, props: JsxProps): VNodeInte
 
   const { children, ...attr } = props;
 
-  return tag ? new ElementVNode({ tag, children, props: attr }) : new FragmentVNode(children);
+  const vNode = tag ? new ElementVNode({ tag, children, props: attr }) : new FragmentVNode(children);
+
+  if (typeof key !== "undefined") (vNode as VNodeInterface).key = key;
+
+   return vNode;
 }
 
 /**
@@ -931,7 +962,7 @@ export function Suspense({
  *
  *    return (
  *      <>
- *        <input ref={ref} />
+ *        <input _ref={ref} />
  *        <my-label on-click={() => ref.current.focus() } />
  *      </>
  *    );

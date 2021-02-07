@@ -41,12 +41,12 @@ new (class {
             value={this.value}
             on-change={(e: InputEvent) => (this.value = parseFloat((e.currentTarget as HTMLInputElement).value))}
             type="number"
-            ref={this.inputRef}
+            _ref={this.inputRef}
           />
           <button on-click={() => this.value++}>+</button>
         </div>
 
-        {/* using ref to access the HTMLElement directly */}
+        {/* using _ref to access the HTMLElement directly */}
         <p on-click={() => this.inputRef.current!.focus()} style="cursor: pointer">
           click here to go to the input field
         </p>

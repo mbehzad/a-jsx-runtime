@@ -5,7 +5,6 @@ const { describe, it, beforeEach, afterEach } = require("mocha");
 const { rawHtml, render, createRef, Suspense } = require("../jsx/jsx-runtime.ts");
 
 describe("jsx-runtimes test", function () {
-
   describe("converting to string", function () {
     it("should return jsx as string when used with innerHTML", function () {
       const div = document.createElement("div");
@@ -231,25 +230,25 @@ describe("jsx-runtimes test", function () {
         // obj and string
       });
 
-      describe("ref", function () {
+      describe("_ref", function () {
         it("using createRef, should set the current property to correct element", function () {
           const root = document.createElement("div");
           const ref = createRef();
 
-          render(<button ref={ref}>text</button>, root);
+          render(<button _ref={ref}>text</button>, root);
 
           const button = root.querySelector("button");
 
           expect(ref.current).to.equal(button);
         });
 
-        it("should call the ref callback with correct element", function () {
+        it("should call the _ref callback with correct element", function () {
           const noop = function nop() {};
           const spy = chai.spy(noop);
 
           const root = document.createElement("div");
 
-          render(<button ref={spy}>text</button>, root);
+          render(<button _ref={spy}>text</button>, root);
 
           const button = root.querySelector("button");
 
@@ -310,7 +309,7 @@ describe("jsx-runtimes test", function () {
         expect(root.innerHTML).to.equal("<div><span><button>btn</button></span></div>");
       });
 
-      it("should render function components correctly (with ref)", function () {
+      it("should render function components correctly (with _ref)", function () {
         const root = document.createElement("div");
         const ref = createRef();
 
@@ -320,7 +319,7 @@ describe("jsx-runtimes test", function () {
 
         render(
           <div>
-            <Comp ref={ref} />
+            <Comp _ref={ref} />
           </div>,
           root,
         );
@@ -633,7 +632,66 @@ describe("jsx-runtimes test", function () {
       expect(spy2).to.have.been.called();
     });
 
-    // second render use child of render 1
+    it("should re-render and match items based on their 'keys'", function () {
+      const root = document.createElement("div");
+
+      render(
+        <div>
+          <div _key="a" class="a">A</div>
+          <div _key="b" class="b">B</div>
+        </div>,
+        root,
+      );
+
+      const A1 = root.querySelector(".a");
+
+      render(
+        <div>
+          <div _key="b" class="b">B</div>
+          <div _key="a" class="a">A</div>
+        </div>,
+        root,
+      );
+
+      const A2 = root.querySelector(".a");
+
+      expect(A2).to.equal(A1);
+    });
+
+    it("should re-render and match items based on their 'keys' (Function components and missing keys)", function () {
+      const root = document.createElement("div");
+
+      function Comp() {
+        return (
+          <div>
+            <div class="a">A</div>
+            <div class="b">B</div>
+          </div>
+        );
+      }
+
+      render(
+        <div>
+          <Comp _key="a" />
+          <div class="c">C</div>
+        </div>,
+        root,
+      );
+
+      const A1 = root.querySelector(".a");
+
+      render(
+        <div>
+          <div class="c">C</div>
+          <Comp _key="a" />
+        </div>,
+        root,
+      );
+
+      const A2 = root.querySelector(".a");
+
+      expect(A2).to.equal(A1);
+    });
   });
 
   describe("Suspense", function () {
