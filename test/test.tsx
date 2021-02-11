@@ -658,6 +658,32 @@ describe("jsx-runtimes test", function () {
       expect(A2).to.equal(A1);
     });
 
+    it("should re-render and match items based on their 'keys' when some are removed", function () {
+      const root = document.createElement("div");
+
+      render(
+        <div>
+          <div _key="a" class="a">A</div>
+          <div _key="b" class="b">B</div>
+        </div>,
+        root,
+      );
+
+      const A1 = root.querySelector(".a");
+
+      render(
+        <div>
+          {null}
+          <div _key="a" class="a">A</div>
+        </div>,
+        root,
+      );
+
+      const A2 = root.querySelector(".a");
+
+      expect(A2).to.equal(A1);
+    });
+
     it("should re-render and match items based on their 'keys' (Function components and missing keys)", function () {
       const root = document.createElement("div");
 
