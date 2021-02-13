@@ -26,6 +26,7 @@ global.Element = window.Element;
 global.HTMLElement = window.HTMLElement;
 global.SVGElement = window.SVGElement;
 global.DocumentFragment = window.DocumentFragment;
+global.Comment = window.Comment;
 
 global.navigator = {
   userAgent: "node.js",

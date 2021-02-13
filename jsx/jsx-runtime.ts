@@ -954,6 +954,61 @@ export function Suspense({
   });
 }
 
+// VNode for <!-- comments -->
+class CommentVNode extends VNode implements VNodeInterface {
+  type = "Comment";
+  children = [];
+  props: { content: string };
+  node: Comment = null as any;
+  parent: VNodeInterface = null as any;
+
+  constructor(content: string) {
+    super();
+    this.props = { content };
+  }
+
+  asNode() {
+    const commentNode = document.createComment(this.props.content);
+    this.node = commentNode;
+    return commentNode;
+  }
+
+  toString() {
+    return `<!--${this.props.content}-->`;
+  }
+
+  diffAndPatch(newNode: CommentVNode) {
+    this.node.textContent = newNode.props.content;
+    newNode.node = this.node;
+  }
+
+  removeFromDOM() {
+    this.node.parentNode!.removeChild(this.node);
+  }
+}
+
+/**
+ * Function to render html comment in jsx output
+ * @param param0
+ * @param param0.content {string} - content of the html comment
+ * @example
+ *  render(
+ *    <div>
+ *      <Comment content=" comment regarding the next input " />
+ *      <input />
+ *    </div>,
+ *    el
+ *  );
+ *  will render:
+ *    <div>
+ *      <!-- comment regarding the next input -->
+ *      <input />
+ *    </div>
+ */
+export function HTMLComment ({content=""}:{content: string}) {
+  return new CommentVNode(content);
+}
+
 /**
  * @example
  *  import { createRef } from "./jsx-runtime";

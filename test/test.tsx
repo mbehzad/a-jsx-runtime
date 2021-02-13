@@ -2,7 +2,7 @@ const chai = require("chai");
 const { expect } = chai;
 const { describe, it, beforeEach, afterEach } = require("mocha");
 
-const { rawHtml, render, createRef, Suspense } = require("../jsx/jsx-runtime.ts");
+const { rawHtml, render, createRef, Suspense, HTMLComment } = require("../jsx/jsx-runtime.ts");
 
 describe("jsx-runtimes test", function () {
   describe("converting to string", function () {
@@ -45,6 +45,14 @@ describe("jsx-runtimes test", function () {
       div.innerHTML = <span class="foo">{rawHtml(safeText)}</span>;
 
       expect(div.innerHTML).to.equal('<span class="foo"><script>alert()</script></span>');
+    });
+
+    it("should render html comments correctly (HTMLComment)", function () {
+      const div = document.createElement("div");
+
+      div.innerHTML = <HTMLComment content = " hello there! " />;
+
+      expect(div.innerHTML).to.equal('<!-- hello there! -->');
     });
   });
 
@@ -128,6 +136,18 @@ describe("jsx-runtimes test", function () {
       );
 
       expect(root.querySelector("path")).to.be.an.instanceof(SVGElement);
+    });
+
+    it("should render HTMLComment correctly", function () {
+      const root = document.createElement("div");
+
+      render(
+        <HTMLComment content=" some comment! " />,
+        root,
+      );
+
+      expect(root.childNodes[0]).to.be.an.instanceof(Comment);
+      expect(root.innerHTML).to.equal("<!-- some comment! -->");
     });
 
     it("should replace children when append is not set", function () {
@@ -717,6 +737,25 @@ describe("jsx-runtimes test", function () {
       const A2 = root.querySelector(".a");
 
       expect(A2).to.equal(A1);
+    });
+
+    it("should re-render HTMLComment correctly", function () {
+      const root = document.createElement("div");
+
+      render(
+        <HTMLComment content=" some comment! " />,
+        root,
+      );
+
+      const commentNode = root.childNodes[0];
+
+      render(
+        <HTMLComment content=" some other comment! " />,
+        root,
+      );
+
+      expect(root.childNodes[0]).to.equal(commentNode);
+      expect(root.innerHTML).to.equal("<!-- some other comment! -->");
     });
   });
 
