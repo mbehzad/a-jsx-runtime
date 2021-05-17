@@ -13,7 +13,7 @@ const refsToCall: Array<() => void> = [];
 // Functions will be used for event listeners. (with attribute name starting with 'on-')
 // Object will be set as property on the rendered node element
 type Attributes = {
-  [key: string]: string | boolean | number | Function | Object;
+  [key: string]: string | boolean | number | undefined | null | Function | Object;
 };
 
 // additional attributes which can have additional serialization before rendering as attributes
@@ -37,7 +37,7 @@ type JSXChild = VNodeInterface | Node | string | number | boolean | null | undef
 
 // child elements in the jsx markup which will be passed to the h function as `props.children`
 type ChildrenProps = {
-  children: JSXChild[];
+  children?: JSXChild;
 };
 
 /**
@@ -124,6 +124,17 @@ function sanitize(text: string): string {
 }
 
 /**
+ * makes sure children is alway an array
+ * @param children {JSXChild} - i.e. props.children from a jsx call
+ * @returns {JSXChild[]}
+ */
+function normalizeChildren(children: JSXChild): JSXChild[] {
+  if (typeof children === "undefined") return [];
+  if (Array.isArray(children)) return children;
+  return [children];
+}
+
+/**
  * basically `Element.outerHTML` but also supports Text node and DocumentFragment
  * @param element {Node} - element which its html needs to be returned
  */
@@ -157,7 +168,7 @@ function asHtmlString(tag: string | Function, props: Attributes & SpecialAttribu
       // for style as object:
       // (style:) {display: "none", position: "absolute"} ==> 'display: none; position: absolute;'
       if (key === "style" && typeof value === "object") {
-        value = Object.entries(value)
+        value = Object.entries(value!)
           // ignore stuff like `{background: active && "red"}` when `active === false / null / undefined`
           .filter(([, v]) => truthy(v))
           // currently supports "background-color" not "backgroundColor"
@@ -675,7 +686,9 @@ function asVNode(tag: string | Function | undefined, {_key: key, _slot: slot, ..
     return resultVNode;
   }
 
-  const { children, ...attr } = props;
+  const { children: propsChildren, ...attr } = props;
+  // make sure children is always an array
+  const children: JSXChild[] = normalizeChildren(propsChildren);
 
   const vNode = tag ? new ElementVNode({ tag, children, props: attr }) : new FragmentVNode(children);
 
@@ -683,6 +696,11 @@ function asVNode(tag: string | Function | undefined, {_key: key, _slot: slot, ..
   if (typeof key !== "undefined") (vNode as VNodeInterface).key = key;
 
   return vNode;
+}
+
+// jsx is called when the element has one or zero children
+export function jsx(tag: string | Function, props: JsxProps): VNodeInterface {
+  return asVNode(tag, props);
 }
 
 /**
@@ -704,17 +722,6 @@ export function jsxs(tag: string | Function, props: JsxProps): VNodeInterface {
  */
 export function Fragment(props: JsxProps) {
   return asVNode(undefined, props);
-}
-
-// jsx is called when the element has one or zero children
-export function jsx(
-  tag: string | Function,
-  props: Attributes & SpecialAttributes & { children?: JSXChild },
-): VNodeInterface {
-  // @ts-ignore - wrapping the children as array to re-use jsxs method
-  props.children = props.hasOwnProperty("children") ? [props.children] : [];
-
-  return jsxs(tag, props as JsxProps);
 }
 
 /**
@@ -1056,10 +1063,10 @@ export function HTMLComment({content=""}:{content: string}) {
  *  element
  * )
  */
- export function Slot({name, hostsChildren, children}: {name:string, hostsChildren:JSXChild[], children?:JSXChild[]}) {
+ export function Slot({name, hostsChildren, children}: {name:string, hostsChildren:JSXChild, children?:JSXChild}) {
   let content = [];
   // find children which have the correct slot attribute
-  for (const child of hostsChildren) {
+  for (const child of normalizeChildren(hostsChildren)) {
     // @ts-ignore child only might have the slot property in case on VElement and Fragment
     if (child && child.slot === name) content.push(child);
   }
@@ -1067,7 +1074,7 @@ export function HTMLComment({content=""}:{content: string}) {
   // return default content aka its real children when no assigned node was found
   // children is always an array (when passed to the tag function),
   // convert to VNode
-  return Fragment({children: content.length ? content : children!});
+  return Fragment({children: content.length ? content : children});
 }
 
 /**
