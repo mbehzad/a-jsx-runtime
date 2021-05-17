@@ -22,6 +22,7 @@ type SpecialAttributes = {
   style?: string | { [key: string]: string };
   _ref?: Function;
   _key?: string;
+  _slot?: string;
 };
 
 // types of children which will be passed by the jsx parser plugin
@@ -42,7 +43,7 @@ type ChildrenProps = {
 /**
  * props object which will be passed to jsx pragma and custom component functions
  */
-type JsxProps = Attributes & SpecialAttributes & ChildrenProps;
+export type JsxProps = Attributes & SpecialAttributes & ChildrenProps;
 
 /**
  * return the closest ancestor of the given VNode which has an DOM Element (i.e. is not a Fragment)
@@ -214,6 +215,18 @@ function asNode(
   return node;
 }
 
+function initializeJSXChildren(children: JSXChild[]) {
+  const childrenVNodes = children.map(child => {
+    if (Array.isArray(child)) return new FragmentVNode(child);
+    if (child instanceof VNode) return child as VNodeInterface;
+    if (child instanceof Node) return new LiveNodeVNode(child);
+    if (!truthy(child)) return new NullVNode();
+    return new TextVNode(child as string | number | true);
+  });
+
+  return childrenVNodes;
+}
+
 /**
  * renders the HTML for the given V-Node and adds to the DOM at the correct position
  * @param newNode - vNode to be rendered as HTML Node and added to DOM
@@ -299,6 +312,8 @@ export interface VNodeInterface {
   node?: Node;
   // will be used for diff & patching a list of items with a previous rendered list
   key?: string;
+  // host's slot's name which will be replaced by this node
+  slot?: string;
   // removes all HTML Elements which were rendered as part of this V-Node or its children from jsx code
   removeFromDOM(): void;
   // update the DOM node which were rendered for this v-node and it's children
@@ -315,21 +330,13 @@ class ElementVNode extends VNode implements VNodeInterface {
   children: VNodeInterface[];
   parent: VNodeInterface = null as any;
   svgContext: boolean = false; // will be set to true when element is an SVG Element
+  slot?: string; // {@link VNodeInterface.slot}
 
   constructor({ tag, props, children }: { tag: string; props: Attributes & SpecialAttributes; children: JSXChild[] }) {
     super();
     this.tag = tag;
     this.props = props;
-
-    // convert child jsx content to VNodes
-    this.children = children.map(child => {
-      if (Array.isArray(child)) return new FragmentVNode(child);
-      if (child instanceof VNode) return child as VNodeInterface;
-      if (child instanceof Node) return new LiveNodeVNode(child);
-      if (!truthy(child)) return new NullVNode();
-
-      return new TextVNode(child as string | number | true);
-    });
+    this.children = initializeJSXChildren(children);
     // set parent property on all children
     this.children.forEach(child => (child.parent = this));
   }
@@ -471,18 +478,13 @@ class FragmentVNode extends VNode implements VNodeInterface {
   type = "Fragment";
   children: VNodeInterface[];
   parent: VNodeInterface = null as any;
+  slot?: string; // {@link VNodeInterface.slot}
 
   constructor(children: JSXChild[]) {
     super();
 
-    this.children = children.map(child => {
-      if (Array.isArray(child)) return new FragmentVNode(child);
-      if (child instanceof VNode) return child as VNodeInterface;
-      if (child instanceof Node) return new LiveNodeVNode(child);
-      if (!truthy(child)) return new NullVNode();
-      return new TextVNode(child as string | number | true);
-    });
-
+    this.children = initializeJSXChildren(children);
+    // set parent property on all children
     this.children.forEach(child => (child.parent = this));
   }
 
@@ -512,6 +514,7 @@ class TextVNode extends VNode implements VNodeInterface {
   node: Text = null as any;
   props: { content: any };
   parent: VNodeInterface = null as any;
+  slot?: string; // {@link VNodeInterface.slot}
 
   /**
    *
@@ -546,6 +549,7 @@ class NullVNode extends VNode implements VNodeInterface {
   type = "Null";
   children = [];
   parent: VNodeInterface = null as any;
+  slot?: string; // {@link VNodeInterface.slot}
 
   constructor() {
     super();
@@ -575,6 +579,7 @@ class LiveNodeVNode extends VNode implements VNodeInterface {
   children = [] as VNodeInterface[];
   parent: VNodeInterface = null as any;
   node: Node;
+  slot?: string; // {@link VNodeInterface.slot}
 
   /**
    *
@@ -636,7 +641,7 @@ class RootVNode extends VNode implements VNodeInterface {
 }
 
 // generate the V-Nodes and V-Tree based on the objects parsed by the jsx babel plugin
-function asVNode(tag: string | Function | undefined, {_key: key, ...props}: JsxProps): VNodeInterface {
+function asVNode(tag: string | Function | undefined, {_key: key, _slot: slot, ...props}: JsxProps): VNodeInterface {
 
   if (typeof tag === "function") {
     let ref: Function | undefined = undefined;
@@ -645,6 +650,7 @@ function asVNode(tag: string | Function | undefined, {_key: key, ...props}: JsxP
       delete props._ref;
     }
     const result = tag(props);
+    let resultVNode: VNodeInterface;
     if (result instanceof VNode) {
       if (typeof ref === "function") {
         refsToCall.push(() => {
@@ -656,22 +662,27 @@ function asVNode(tag: string | Function | undefined, {_key: key, ...props}: JsxP
         });
       }
       if (typeof key !== "undefined") (result as VNodeInterface).key = key;
-      return result as VNodeInterface;
-    }
-    if (result instanceof Node) return new LiveNodeVNode(result);
-    // null jsx node
-    if (!truthy(result)) return new NullVNode();
 
-    return new TextVNode(result);
+      resultVNode = result as VNodeInterface;
+    }
+    else if (result instanceof Node) resultVNode = new LiveNodeVNode(result);
+    // null jsx node
+    else if (!truthy(result)) resultVNode = new NullVNode();
+    else resultVNode = new TextVNode(result);
+
+    if (typeof slot !== "undefined") resultVNode.slot = slot;
+
+    return resultVNode;
   }
 
   const { children, ...attr } = props;
 
   const vNode = tag ? new ElementVNode({ tag, children, props: attr }) : new FragmentVNode(children);
 
+  if (typeof slot !== "undefined") vNode.slot = slot;
   if (typeof key !== "undefined") (vNode as VNodeInterface).key = key;
 
-   return vNode;
+  return vNode;
 }
 
 /**
@@ -774,6 +785,7 @@ export class SuspenseVNode extends VNode implements VNodeInterface {
   type = "Suspense";
   parent: VNodeInterface = null as any;
   children: Array<VNodeInterface>;
+  slot?: string; // {@link VNodeInterface.slot}
 
   placeholder: JSXChild;
   promise: Promise<any>;
@@ -884,6 +896,7 @@ export function rawHtml(content: string): VNodeInterface {
     childNodes: ChildNode[] = null as any;
     content: string;
     node?: Node;
+    slot?: string; // {@link VNodeInterface.slot}
 
     constructor(content: string) {
       super();
@@ -961,6 +974,7 @@ class CommentVNode extends VNode implements VNodeInterface {
   props: { content: string };
   node: Comment = null as any;
   parent: VNodeInterface = null as any;
+  slot?: string; // {@link VNodeInterface.slot}
 
   constructor(content: string) {
     super();
@@ -1005,8 +1019,55 @@ class CommentVNode extends VNode implements VNodeInterface {
  *      <input />
  *    </div>
  */
-export function HTMLComment ({content=""}:{content: string}) {
+export function HTMLComment({content=""}:{content: string}) {
   return new CommentVNode(content);
+}
+
+/**
+ * named Container to be replaced with passed children
+ *
+ * @param {Object} options
+ * @param {string} options.name - name of the slot
+ * @param {JSXChild} options.hostsChildren - props.children from the parent component functions which contains the slotable elements
+ * @param {JSXChild} options.children - props.children from the Slot element which is used for the fallback/default content
+ * @returns {JSX.Element}
+ * @example
+ * function Dialog({children}) {
+ *  return (
+ *    <div>
+ *      <Slot name="body" hostsChildren={children}>
+ *        <p> fallback text </p>
+ *      </Slot>
+ *      <footer>
+ *        <Slot name="footer" hostsChildren={children} />
+ *      </footer>
+ *    </div>
+ *  );
+ * }
+ *
+ * render (
+ *  <Dialog>
+ *    <h3 _slot="body"> Title </h3>
+ *    <p _slot="body"> Description </p>
+ *    <a _slot="footer" href="mailto:name@email.com">
+ *      contact us
+ *    </a>
+ *  </Dialog>,
+ *  element
+ * )
+ */
+ export function Slot({name, hostsChildren, children}: {name:string, hostsChildren:JSXChild[], children?:JSXChild[]}) {
+  let content = [];
+  // find children which have the correct slot attribute
+  for (const child of hostsChildren) {
+    // @ts-ignore child only might have the slot property in case on VElement and Fragment
+    if (child && child.slot === name) content.push(child);
+  }
+
+  // return default content aka its real children when no assigned node was found
+  // children is always an array (when passed to the tag function),
+  // convert to VNode
+  return Fragment({children: content.length ? content : children!});
 }
 
 /**

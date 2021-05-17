@@ -1,6 +1,6 @@
 {
   "items": [
-    {"rte": "<p>item <b>1</b></p>"},
-    {"rte": "<p>item <b>2</b></p>"}
+    {"id": "1", "rte": "<p>item <b>1</b></p>"},
+    {"id": "2", "rte": "<p>item <b>2</b></p>"}
   ]
 }

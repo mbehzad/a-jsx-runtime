@@ -4,7 +4,7 @@
 
 ```TSX
 
-import { Suspense, createRef, rawHtml } from "jsx";
+import { render, createRef, rawHtml, Slot, Suspense } from "jsx";
 
 const existingHTMLElement = document.querySelector("#greetings");
 
@@ -12,19 +12,24 @@ const pendingRequest = fetchJSON("/api.json");
 
 const inputRef = createRef<HTMLInputElement>();
 
-function Heading({ bg, children }) {
-  const bg = `background-color: ${bg}`;
-  return <h1 style={bg}>{children}</h1>;
+function Card({ bg, children }) {
+  const style = `background-color: ${bg}; border: 1px solid gray;`;
+  return (
+    <div style={style}>
+      <Slot name="content" hostsChildren={children}>
+        <p>default content</p>
+      </Slot>
+      <Slot name="actions" hostsChildren={children} />
+    </div>
+  );
 }
 
 render(
   <>
-    <Heading bg="#a00">
-      Title
-      <svg>
-        <use href="#star" />
-      </svg>
-    </Heading>
+    <Card bg="#a00">
+      <p _slot="content">New Products!</p>
+      <a _slot="actions" href="./shop">Buy Now</a>
+    </Card>
 
     <input type="checkbox" _ref={inputRef} checked={true} />
     <p on-click={e => inputRef.current!.focus()}>label</p>
@@ -58,6 +63,7 @@ For another example see [example.tsx](./examples/example.tsx).
 
 - copy the jsx directory with jsx-runtime.ts to a project
 - add jsx parser to babel config. e.g
+
 ```javascript
 module.exports = {
   ...
@@ -95,7 +101,9 @@ module.exports = {
   ...
 };
 ```
+
 - update `global.ts`. e.g.
+
 ```typescript
 declare namespace JSX {
   interface IntrinsicElements {
@@ -105,8 +113,15 @@ declare namespace JSX {
       [attributeName: string]: string | boolean | number | Object | string[] | null | undefined;
       _ref?: Function;
       _key?: string;
+      _slot?: string;
       children?: any;
     };
+  }
+
+  interface IntrinsicAttributes {
+    _ref?: Function;
+    _key?: string;
+    _slot?: string;
   }
 
   interface ElementChildrenAttribute {
@@ -114,4 +129,5 @@ declare namespace JSX {
   }
 }
 ```
+
 - add `"jsx": "preserve",` to `tsconfig.json`.

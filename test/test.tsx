@@ -2,9 +2,9 @@ const chai = require("chai");
 const { expect } = chai;
 const { describe, it, beforeEach, afterEach } = require("mocha");
 
-const { rawHtml, render, createRef, Suspense, HTMLComment } = require("../jsx/jsx-runtime.ts");
+const { rawHtml, render, createRef, Suspense, HTMLComment, Slot, Fragment } = require("../jsx/jsx-runtime.ts");
 
-describe("jsx-runtimes test", function () {
+describe("jsx-runtime test", function () {
   describe("converting to string", function () {
     it("should return jsx as string when used with innerHTML", function () {
       const div = document.createElement("div");
@@ -853,4 +853,223 @@ describe("jsx-runtimes test", function () {
       expect(root.innerHTML).to.equal("<p>Still loading...</p>");
     });
   });
+
+  describe("Slot", function () {
+    it("should render placeholder when no child for the slot was provided", function () {
+      const root = document.createElement("div");
+      function Comp({children}:{children: any}) {
+        return (
+          <div><Slot name="body" hostsChildren={children}><p>default</p></Slot></div>
+        );
+      }
+
+      render(<Comp><p>something else</p></Comp>, root);
+
+      expect(root.innerHTML).to.equal("<div><p>default</p></div>");
+    });
+
+    it("should render content of slotted node (Intrinsic Elements)", function () {
+      const root = document.createElement("div");
+      function Comp({children}:{children: any}) {
+        return (
+          <div>
+            <Slot name="body" hostsChildren={children}>
+              <h1>default</h1>
+            </Slot>
+          </div>
+        );
+      }
+
+      render(
+        <Comp>
+          <p _slot="body" class="copy">something else</p>
+          <input />
+        </Comp>,
+        root);
+
+      expect(root.innerHTML).to.equal('<div><p class="copy">something else</p></div>');
+    });
+
+    it("should render content of slotted node (Function Component returning Intrinsic Elements)", function () {
+      const root = document.createElement("div");
+      function Div() {
+        return <div>text</div>;
+      }
+      function Comp({children}:{children: any}) {
+        return (
+          <div>
+            <Slot name="body" hostsChildren={children}>
+              <h1>default</h1>
+            </Slot>
+          </div>
+        );
+      }
+
+      render(<Comp><Div _slot="body" /></Comp>, root);
+
+      expect(root.innerHTML).to.equal("<div><div>text</div></div>");
+    });
+
+    it("should render content of slotted node (Function Component returning Text)", function () {
+      const root = document.createElement("div");
+      function Div() {
+        return "text";
+      }
+      function Comp({children}:{children: any}) {
+        return (
+          <div>
+            <Slot name="body" hostsChildren={children}>
+              <h1>default</h1>
+            </Slot>
+          </div>
+        );
+      }
+
+      render(<Comp><Div _slot="body" /></Comp>, root);
+
+      expect(root.innerHTML).to.equal("<div>text</div>");
+    });
+
+    it("should render content of slotted fragment (Fragment)", function () {
+      const root = document.createElement("div");
+
+      function Comp({children}:{children: any}) {
+        return (
+          <div>
+            <Slot name="body" hostsChildren={children}>
+              <h1>default</h1>
+            </Slot>
+          </div>
+        );
+      }
+
+      render(
+        <Comp>
+          <Fragment _slot="body">
+            <h1>H1</h1>
+            <p>P</p>
+          </Fragment>
+        </Comp>,
+      root);
+
+      expect(root.innerHTML).to.equal("<div><h1>H1</h1><p>P</p></div>");
+    });
+
+    it("should render content of all assigned nodes for the same slot", function () {
+      const root = document.createElement("div");
+
+      function Comp({children}:{children: any}) {
+        return (
+          <div>
+            <Slot name="body" hostsChildren={children}>
+              <h1>default</h1>
+            </Slot>
+          </div>
+        );
+      }
+
+      render(
+        <Comp>
+          <h1 _slot="body">H1</h1>
+          <p _slot="body">P</p>
+        </Comp>,
+        root);
+
+      expect(root.innerHTML).to.equal("<div><h1>H1</h1><p>P</p></div>");
+    });
+
+    it("should render content of children without _slot in the 'default' (unnamed) slot", function () {
+      const root = document.createElement("div");
+
+      function Comp({children}:{children: any}) {
+        return (
+          <div>
+            <Slot hostsChildren={children}><h1>default</h1></Slot>
+          </div>
+        );
+      }
+
+      render(
+        <Comp>
+          <h1>H1</h1>
+          <p>P</p>
+          <h3 _slot="body">H3</h3>
+        </Comp>,
+        root);
+
+      expect(root.innerHTML).to.equal("<div><h1>H1</h1><p>P</p></div>");
+    });
+
+    it("should render assigned nodes for different slots", function () {
+      const root = document.createElement("div");
+
+      function Comp({children}:{children: any}) {
+        return (
+          <div>
+            <Slot name="body" hostsChildren={children}><h1>default body</h1></Slot>
+            <footer>
+              <Slot name="footer" hostsChildren={children} />
+            </footer>
+          </div>
+        );
+      }
+
+      render(
+        <Comp>
+          <p _slot="body">body</p>
+          <button _slot="footer">click</button>
+        </Comp>,
+        root);
+
+      expect(root.innerHTML).to.equal("<div><p>body</p><footer><button>click</button></footer></div>");
+    });
+
+    it("should not render slot which hasn't any default content and no assigned node", function () {
+      const root = document.createElement("div");
+
+      function Comp({children}:{children: any}) {
+        return (
+          <div>
+            <Slot name="body" hostsChildren={children} />
+          </div>
+        );
+      }
+
+      render(
+        <Comp>
+          <button>click</button>
+        </Comp>,
+        root);
+
+      expect(root.innerHTML).to.equal("<div></div>");
+    });
+
+    it("should re-render assigned nodes for different slots correctly", function () {
+      const root = document.createElement("div");
+
+      function Comp({children}:{children: any}) {
+        return (
+          <div>
+            <Slot name="body" hostsChildren={children}><h1>default body</h1></Slot>
+            <footer>
+              <Slot name="footer" hostsChildren={children} />
+            </footer>
+          </div>
+        );
+      }
+
+      render(<Comp>
+        <h1 _slot="body">body - 0</h1>
+        <button _slot="footer">click - 0</button>
+      </Comp>, root);
+
+      render(<Comp>
+        <p _slot="body">body</p>
+        <button _slot="footer">click</button>
+      </Comp>, root);
+
+      expect(root.innerHTML).to.equal("<div><p>body</p><footer><button>click</button></footer></div>");
+    });
+  });
+
 });

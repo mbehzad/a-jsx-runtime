@@ -1,11 +1,26 @@
-import { render, rawHtml, Suspense, createRef } from "../jsx/jsx-runtime";
+import { render, rawHtml, Suspense, createRef, JsxProps, Fragment, Slot } from "../jsx/jsx-runtime";
 
 const $ssrElement = document.querySelector("#server-side-rendered-html")!;
 
-type ResponseData = { items: Array<{ rte: string }> };
+type ResponseData = { items: Array<{ id: string, rte: string }> };
 
 function Spinner() {
   return <p>Loading ...</p>;
+}
+
+function Dialog({ open = false, children }: JsxProps) {
+  return (
+    <div class="modal-dialog" hidden={!open} style="border: 1px solid; padding: 5px; 15px;">
+      <div class="body">
+        <Slot name="body" hostsChildren={children}>
+          <p>default content</p>
+        </Slot>
+      </div>
+      <footer>
+        <Slot name="footer" hostsChildren={children} />
+      </footer>
+    </div>
+  );
 }
 
 new (class {
@@ -67,12 +82,23 @@ new (class {
               <p> results: </p>
               <ul>
                 {data.items.map(item => (
-                  <li>{rawHtml(item.rte)}</li>
+                  <li _key={item.id}>{rawHtml(item.rte)}</li>
                 ))}
               </ul>
             </>
           )}
         />
+
+        {/* component with slots */}
+        <Dialog open={true}>
+          <Fragment _slot="body">
+            <h3> Title </h3>
+            <p> Description </p>
+          </Fragment>
+          <a _slot="footer" href="mailto:name@email.com">
+            contact us
+          </a>
+        </Dialog>
 
         {$ssrElement}
       </div>,
