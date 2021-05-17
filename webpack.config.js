@@ -21,9 +21,7 @@ module.exports = {
                 [
                   "@babel/preset-env",
                   {
-                    "targets": {
-                      "chrome": "84",
-                    }
+                    "targets": "last 2 Chrome versions"
                   }
                 ],
                 '@babel/preset-typescript',
@@ -47,9 +45,7 @@ module.exports = {
                 [
                   "@babel/preset-env",
                   {
-                    "targets": {
-                      "chrome": "84",
-                    }
+                    "targets": "last 2 Chrome versions"
                   }
                 ],
                 '@babel/preset-typescript',
