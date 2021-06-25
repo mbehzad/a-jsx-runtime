@@ -1,20 +1,36 @@
 {
-  "name": "jsx",
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "name": "a-jsx-runtime",
+  "version": "1.1.0",
+  "description": "Frameworkless JSX Runtime",
+  "main": "lib/jsx-runtime.js",
+  "typings": "types/main.d.ts",
+  "exports": {
+    ".": "./lib/jsx-runtime.js",
+    "./jsx-runtime": "./lib/jsx-runtime.js"
+  },
+  "files": [
+    "lib",
+    "types"
+  ],
   "scripts": {
     "test": "mochapack --require test/setup.js --webpack-config webpack.config-test.js test/test.tsx",
-    "build": "webpack --mode development",
     "start": "webpack serve --mode development",
+    "prepack": "rimraf lib && tsc --project release.tsconfig.json",
     "tsc": "tsc --noEmit"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "keywords": [
+    "jsx-runtime"
+  ],
+  "author": "mbehzad",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mbehzad/a-jsx-runtime.git"
+  },
   "devDependencies": {
     "@babel/core": "^7.12.16",
     "@babel/plugin-transform-react-jsx": "^7.12.16",
+    "@babel/preset-env": "^7.12.16",
     "@babel/preset-typescript": "^7.12.16",
     "@webpack-cli/serve": "^1.3.0",
     "babel-loader": "^8.2.2",
@@ -24,13 +40,11 @@
     "jsdom": "16.4.0",
     "mocha": "^8.3.0",
     "mochapack": "2.0.6",
-    "typescript": "4.0.2",
+    "rimraf": "2.6.3",
+    "typescript": "4.3.4",
     "webpack": "^4.46.0",
     "webpack-cli": "^4.5.0",
     "webpack-dev-server": "^3.11.2",
     "webpack-node-externals": "^2.5.2"
-  },
-  "dependencies": {
-    "@babel/preset-env": "^7.12.16"
   }
 }

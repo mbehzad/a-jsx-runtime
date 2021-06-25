@@ -1,3 +1,5 @@
+// this file is used for the local demo bundle for development
+
 const path = require("path");
 
 module.exports = {

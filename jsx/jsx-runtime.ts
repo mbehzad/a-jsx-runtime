@@ -947,14 +947,18 @@ export function rawHtml(content: string): VNodeInterface {
 }
 
 /**
+ * Component to render placeholder markup till some promise is resolved and the markup is updated
  *
- * @param param0
+ * @param {Object} param0
+ * @param {JSXChild} param0.placeholder - markup to be rendered during the time promise hasn't been resolved
+ * @param {Promise} param0.promise - promise which needs to be resolved for the actual markup to be rendered
+ * @param {Function} param0.template - function which will be called with promises resolve value and should return the desired jsx markup
  * @example
  *   <Suspense
  *     placeholder={<PlaceholderTableRows />}
  *     promise={pendingRequest}
  *     template={(response) =>
- *       <TableRows rows={response.rows} />
+ *       <TableRows rows={response.items} />
  *     }
  *   />
  */
@@ -963,8 +967,11 @@ export function Suspense({
   promise,
   template,
 }: {
+  /** markup to be rendered during the promise hasn't resolved */
   placeholder: JSXChild;
+  /** promise which needs to be resolved for the actual markup to be rendered */
   promise: Promise<any>;
+  /** function which will be called with promises resolve value and should return the desired jsx markup */
   template: Function;
 }) {
   return new SuspenseVNode({
@@ -1091,18 +1098,17 @@ export function HTMLComment({content=""}:{content: string}) {
  *    );
  *  }
  */
-export function createRef<T extends HTMLElement | SVGElement = HTMLElement>() {
-  interface RefObject {
-    (el: HTMLElement | SVGElement): void;
-    current: null | T;
-  }
-
-  const result = function (el: HTMLElement | SVGElement) {
-    result.current = el as T;
-  } as RefObject;
+export function createRef<T extends Element = Element>() {
+  const result = function (el: T) {
+    result.current = el;
+  } as RefObject<T>;
   result.current = null;
 
   return result;
 }
 
-export type RefObject<T = HTMLElement> = { current: T | null };
+export interface RefObject<T extends Element = Element> {
+  (el: T): void;
+  /** reference to the currently rendered HTML/SVG Element */
+  current: null | T;
+}

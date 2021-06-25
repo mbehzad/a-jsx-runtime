@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.json",
+  "files": [
+    "jsx/jsx-runtime.ts"
+  ],
+  "compilerOptions": {
+    "declaration": true,
+    "outDir": "lib",
+    "declarationDir": "./types"
+  }
+}
