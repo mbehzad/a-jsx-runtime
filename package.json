@@ -5,8 +5,15 @@
   "main": "lib/jsx-runtime.js",
   "typings": "types/main.d.ts",
   "exports": {
-    ".": "./lib/jsx-runtime.js",
-    "./jsx-runtime": "./lib/jsx-runtime.js"
+    ".": {
+      "import": "./lib/jsx-runtime.js",
+      "types": "./types/main.d.ts"
+    },
+    "./jsx-runtime": {
+      "import": "./lib/jsx-runtime.js",
+      "types": "./types/main.d.ts"
+    },
+    "./jsx-dev-runtime": "./lib/jsx-runtime.js"
   },
   "files": [
     "lib",

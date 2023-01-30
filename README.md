@@ -81,9 +81,12 @@ npm install a-jsx-runtime @babel/plugin-transform-react-jsx
 
 ## Tooling setup
 
+### Webpack
+
 * add jsx parser to babel config. e.g
 
 ```javascript
+// webpack.config.js
 module.exports = {
   ...
   module: {
@@ -122,6 +125,41 @@ module.exports = {
 ```
 
 * add `"jsx": "preserve",` to `tsconfig.json`.
+
+### Vite
+
+* use vite react plugin
+
+```js
+// vite.config.js
+
+import {defineConfig} from 'vite';
+import react from '@vitejs/plugin-react';
+
+export default defineConfig(() => ({
+  plugins: [
+    react(),
+  ],
+  // only needed when there is *no* tsconfig. otherwise the jsxImportSource will automatically be picked up
+  esbuild: {
+    jsxImportSource: "a-jsx-runtime",
+  },
+}));
+```
+
+* tsconfig
+
+```js
+// tsconfig.json
+
+{
+  "compilerOptions": {
+    // ...
+    "moduleResolution": "node16", // is currently needed for typescript to use package exports
+    "jsx": "preserve",
+    "jsxImportSource": "a-jsx-runtime",
+  },
+}
 
 ## Special props
 

@@ -714,6 +714,9 @@ export function jsxs(tag: string | Function, props: JsxProps): VNodeInterface {
   return asVNode(tag, props);
 }
 
+// ne specific dev support yet
+export const jsxDEV = jsx;
+
 /**
  * converts the fragments object to nodes
  *
